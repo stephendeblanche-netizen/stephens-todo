@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
@@ -21,15 +21,16 @@ vi.mock("./db", () => ({
   replaceAllData: vi.fn().mockResolvedValue(new Map()),
   upsertUser: vi.fn().mockResolvedValue(undefined),
   getUserByOpenId: vi.fn().mockResolvedValue(undefined),
+  cascadeCategoryId: vi.fn().mockResolvedValue(undefined),
+  getDescendantIds: vi.fn().mockResolvedValue([]),
+  getDb: vi.fn().mockResolvedValue(null),
 }));
 
 function createCtx(): TrpcContext {
   return {
     user: null,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
-    res: {
-      clearCookie: vi.fn(),
-    } as unknown as TrpcContext["res"],
+    res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
   };
 }
 
@@ -44,12 +45,7 @@ describe("categories router", () => {
 
   it("creates a new category", async () => {
     const caller = appRouter.createCaller(createCtx());
-    const result = await caller.categories.create({
-      name: "Test Category",
-      kind: "normal",
-      colorIndex: 2,
-      sortOrder: 2,
-    });
+    const result = await caller.categories.create({ name: "Test Category", kind: "normal", colorIndex: 2, sortOrder: 2 });
     expect(result.id).toBe(3);
   });
 
@@ -67,10 +63,7 @@ describe("categories router", () => {
 
   it("reorders categories", async () => {
     const caller = appRouter.createCaller(createCtx());
-    const result = await caller.categories.reorder([
-      { id: 1, sortOrder: 1 },
-      { id: 2, sortOrder: 0 },
-    ]);
+    const result = await caller.categories.reorder([{ id: 1, sortOrder: 1 }, { id: 2, sortOrder: 0 }]);
     expect(result.success).toBe(true);
   });
 });
@@ -85,22 +78,13 @@ describe("tasks router", () => {
 
   it("creates a new task", async () => {
     const caller = appRouter.createCaller(createCtx());
-    const result = await caller.tasks.create({
-      categoryId: 1,
-      text: "New task",
-      sortOrder: 2,
-    });
+    const result = await caller.tasks.create({ categoryId: 1, text: "New task", sortOrder: 2 });
     expect(result.id).toBe(10);
   });
 
   it("creates a sub-task with parentId", async () => {
     const caller = appRouter.createCaller(createCtx());
-    const result = await caller.tasks.create({
-      categoryId: 1,
-      parentId: 1,
-      text: "Sub-task",
-      sortOrder: 0,
-    });
+    const result = await caller.tasks.create({ categoryId: 1, parentId: 1, text: "Sub-task", sortOrder: 0 });
     expect(result.id).toBe(10);
   });
 
@@ -128,11 +112,16 @@ describe("tasks router", () => {
     expect(result.success).toBe(true);
   });
 
-  it("reorders tasks with category move", async () => {
+  it("reorders tasks with cross-category move", async () => {
     const caller = appRouter.createCaller(createCtx());
-    const result = await caller.tasks.reorder([
-      { id: 1, sortOrder: 0, parentId: null, categoryId: 2 },
-    ]);
+    const result = await caller.tasks.reorder([{ id: 1, sortOrder: 0, parentId: null, categoryId: 2 }]);
+    expect(result.success).toBe(true);
+  });
+
+  it("reorders tasks — cycle protection skips invalid re-parent", async () => {
+    // getDescendantIds returns [] (mocked), so no cycle detected — move proceeds
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.tasks.reorder([{ id: 1, sortOrder: 0, parentId: 2, categoryId: 1 }]);
     expect(result.success).toBe(true);
   });
 });

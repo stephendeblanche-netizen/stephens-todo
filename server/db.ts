@@ -135,6 +135,31 @@ export async function deleteTask(id: number) {
   await db.delete(tasks).where(eq(tasks.id, id));
 }
 
+// Cascade categoryId update to all descendants of a task
+export async function cascadeCategoryId(taskId: number, newCategoryId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const children = await db.select().from(tasks).where(eq(tasks.parentId, taskId));
+  for (const child of children) {
+    await db.update(tasks).set({ categoryId: newCategoryId }).where(eq(tasks.id, child.id));
+    await cascadeCategoryId(child.id, newCategoryId);
+  }
+}
+
+// Get all descendant IDs of a task (for cycle detection)
+export async function getDescendantIds(taskId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const children = await db.select().from(tasks).where(eq(tasks.parentId, taskId));
+  const ids: number[] = [];
+  for (const child of children) {
+    ids.push(child.id);
+    const subIds = await getDescendantIds(child.id);
+    ids.push(...subIds);
+  }
+  return ids;
+}
+
 export async function getTopLevelTasks(categoryId: number) {
   const db = await getDb();
   if (!db) return [];

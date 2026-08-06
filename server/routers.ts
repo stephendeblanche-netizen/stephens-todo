@@ -14,6 +14,10 @@ import {
   deleteTask,
   replaceAllData,
 } from "./db";
+import { cascadeCategoryId, getDescendantIds } from "./db";
+import { eq, and, isNull } from "drizzle-orm";
+import { tasks as tasksTable } from "../drizzle/schema";
+import { getDb } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -123,11 +127,56 @@ export const appRouter = router({
       .input(z.array(z.object({ id: z.number().int(), sortOrder: z.number().int(), parentId: z.number().int().nullable().optional(), categoryId: z.number().int().optional() })))
       .mutation(async ({ input }) => {
         for (const item of input) {
+          // Cycle protection: if re-parenting, ensure new parentId is not a descendant
+          if (item.parentId !== undefined && item.parentId !== null) {
+            const descendants = await getDescendantIds(item.id);
+            if (descendants.includes(item.parentId)) {
+              // Skip this move — would create a cycle
+              continue;
+            }
+          }
+
+          const oldTask = await (async () => {
+            const db = await getDb();
+            if (!db) return null;
+            const rows = await db.select().from(tasksTable).where(eq(tasksTable.id, item.id)).limit(1);
+            return rows[0] ?? null;
+          })();
+
+          const newCategoryId = item.categoryId ?? oldTask?.categoryId;
+          const newParentId = item.parentId !== undefined ? item.parentId : (oldTask?.parentId ?? null);
+
           await updateTask(item.id, {
             sortOrder: item.sortOrder,
             ...(item.parentId !== undefined ? { parentId: item.parentId } : {}),
             ...(item.categoryId !== undefined ? { categoryId: item.categoryId } : {}),
           });
+
+          // Cascade categoryId change to all descendants
+          if (newCategoryId && newCategoryId !== oldTask?.categoryId) {
+            await cascadeCategoryId(item.id, newCategoryId);
+          }
+
+          // Normalise source siblings: reindex sortOrder after removal
+          if (oldTask && (newCategoryId !== oldTask.categoryId || newParentId !== (oldTask.parentId ?? null))) {
+            const db = await getDb();
+            if (db) {
+              const sourceSiblings = await db.select().from(tasksTable)
+                .where(
+                  oldTask.parentId !== null
+                    ? and(eq(tasksTable.categoryId, oldTask.categoryId), eq(tasksTable.parentId, oldTask.parentId!))
+                    : and(eq(tasksTable.categoryId, oldTask.categoryId), isNull(tasksTable.parentId))
+                );
+              const sorted = sourceSiblings
+                .filter((s) => s.id !== item.id)
+                .sort((a, b) => a.sortOrder - b.sortOrder);
+              for (let i = 0; i < sorted.length; i++) {
+                if (sorted[i].sortOrder !== i) {
+                  await updateTask(sorted[i].id, { sortOrder: i });
+                }
+              }
+            }
+          }
         }
         return { success: true };
       }),

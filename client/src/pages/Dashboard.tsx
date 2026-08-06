@@ -19,16 +19,9 @@ import {
 
 // ---- Color helpers ----
 const SLOT_COLORS = [
-  "var(--slot-1)",
-  "var(--slot-2)",
-  "var(--slot-3)",
-  "var(--slot-4)",
-  "var(--slot-5)",
-  "var(--slot-6)",
-  "var(--slot-7)",
-  "var(--slot-8)",
+  "var(--slot-1)", "var(--slot-2)", "var(--slot-3)", "var(--slot-4)",
+  "var(--slot-5)", "var(--slot-6)", "var(--slot-7)", "var(--slot-8)",
 ];
-
 function catColor(cat: Category): string {
   if (cat.kind === "urgent") return "var(--status-critical)";
   return SLOT_COLORS[cat.colorIndex % 8] ?? SLOT_COLORS[0];
@@ -36,240 +29,306 @@ function catColor(cat: Category): string {
 
 // ---- Tree builder ----
 type TaskNode = Task & { children: TaskNode[] };
-
 function buildTree(tasks: Task[], parentId: number | null = null): TaskNode[] {
   return tasks
     .filter((t) => (t.parentId ?? null) === parentId)
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((t) => ({ ...t, children: buildTree(tasks, t.id) }));
 }
-
 function matchesSearch(node: TaskNode, q: string): boolean {
   if (!q) return true;
   if (node.text.toLowerCase().includes(q) || node.note.toLowerCase().includes(q)) return true;
   return node.children.some((c) => matchesSearch(c, q));
 }
-
 function countNodes(nodes: TaskNode[]): { total: number; done: number } {
-  let total = 0;
-  let done = 0;
+  let total = 0, done = 0;
   for (const n of nodes) {
-    total++;
-    if (n.done) done++;
-    const sub = countNodes(n.children);
-    total += sub.total;
-    done += sub.done;
+    total++; if (n.done) done++;
+    const sub = countNodes(n.children); total += sub.total; done += sub.done;
   }
   return { total, done };
 }
 
-// ---- Task Item Component ----
+// ---- Drag context (module-level ref to avoid prop drilling) ----
+// We store the dragging task id in a module-level variable so all drop targets
+// can read it without needing to pass it through every component.
+let _draggingId: number | null = null;
+
+// ---- Drop zone types ----
+// "before" = insert before this task (same parent/category)
+// "after"  = insert after this task (same parent/category)
+// "child"  = nest as first child of this task
+// "cat"    = drop as last top-level item in a category
+type DropZoneType = "before" | "after" | "child" | "cat";
+
+interface DropTarget {
+  type: DropZoneType;
+  taskId?: number;   // for before/after/child
+  catId: number;
+  parentId: number | null; // the new parentId after drop
+  sortOrder: number;       // the new sortOrder after drop
+}
+
+// ---- DropLine — thin horizontal line between items ----
+interface DropLineProps {
+  catId: number;
+  parentId: number | null;
+  sortOrder: number;
+  onDrop: (target: DropTarget) => void;
+}
+function DropLine({ catId, parentId, sortOrder, onDrop }: DropLineProps) {
+  const [active, setActive] = useState(false);
+  return (
+    <li
+      className="list-none"
+      style={{ height: active ? "6px" : "3px", margin: "1px 0", transition: "height 0.1s" }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setActive(true); }}
+      onDragLeave={() => setActive(false)}
+      onDrop={(e) => {
+        e.preventDefault(); e.stopPropagation();
+        setActive(false);
+        if (_draggingId === null) return;
+        onDrop({ type: "before", catId, parentId, sortOrder });
+      }}
+    >
+      <div
+        style={{
+          height: "2px",
+          borderRadius: "2px",
+          background: active ? "var(--slot-1)" : "transparent",
+          transition: "background 0.1s",
+          margin: "0 8px",
+        }}
+      />
+    </li>
+  );
+}
+
+// ---- TaskItem ----
 interface TaskItemProps {
   node: TaskNode;
   categoryId: number;
   depth: number;
   query: string;
   showCompleted: boolean;
+  siblingCount: number;
+  siblingIndex: number;
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
   onAddChild: (parentId: number, categoryId: number) => void;
   onDragStart: (id: number) => void;
-  onDropOnTask: (targetId: number) => void;
-  onDropOnCategory: (catId: number) => void;
+  onDrop: (target: DropTarget) => void;
 }
 
 function TaskItem({
-  node,
-  categoryId,
-  depth,
-  query,
-  showCompleted,
-  onUpdate,
-  onDelete,
-  onAddChild,
-  onDragStart,
-  onDropOnTask,
+  node, categoryId, depth, query, showCompleted,
+  siblingCount, siblingIndex,
+  onUpdate, onDelete, onAddChild, onDragStart, onDrop,
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
-  const [dropTarget, setDropTarget] = useState(false);
+  const [nestTarget, setNestTarget] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const textRef = useRef<HTMLInputElement>(null);
 
   if (node.done && !showCompleted) return null;
   if (query && !matchesSearch(node, query)) return null;
 
   const hasChildren = node.children.length > 0;
+  const visibleChildren = node.children.filter(
+    (c) => (showCompleted || !c.done) && (!query || matchesSearch(c, query))
+  );
 
   return (
-    <li className="my-0.5 list-none">
-      <div
-        className={`flex items-start gap-1 px-1.5 py-1 rounded-md cursor-grab select-none transition-colors duration-100`}
-        style={{
-          background: dropTarget ? "var(--drop-wash)" : hovered ? "var(--page-plane)" : "transparent",
-          outline: dropTarget ? "1px dashed var(--slot-1)" : "none",
-        }}
-        draggable
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onDragStart={(e) => {
-          e.stopPropagation();
-          onDragStart(node.id);
-        }}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTarget(true); }}
-        onDragLeave={(e) => { e.stopPropagation(); setDropTarget(false); }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setDropTarget(false);
-          onDropOnTask(node.id);
-        }}
-      >
-        {/* Drag handle */}
-        <span className="mt-1 flex-shrink-0 cursor-grab" style={{ color: "var(--text-muted)", opacity: hovered ? 1 : 0, transition: "opacity 0.1s" }}>
-          <GripVertical size={12} />
-        </span>
+    <>
+      {/* Drop zone BEFORE this item */}
+      <DropLine
+        catId={categoryId}
+        parentId={node.parentId ?? null}
+        sortOrder={siblingIndex}
+        onDrop={onDrop}
+      />
 
-        {/* Collapse chevron or spacer */}
-        {hasChildren ? (
-          <button
-            className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 mt-0.5 transition-transform duration-150"
-            style={{
-              color: "var(--text-muted)",
-              background: "transparent",
-              border: "none",
-              transform: node.collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-            }}
-            onClick={() => onUpdate(node.id, { collapsed: !node.collapsed })}
-            type="button"
-          >
-            <ChevronDown size={12} />
-          </button>
-        ) : (
-          <span className="w-5 flex-shrink-0" />
-        )}
-
-        {/* Checkbox */}
-        <input
-          type="checkbox"
-          checked={node.done}
-          onChange={(e) => onUpdate(node.id, { done: e.target.checked })}
-          className="mt-1 w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
-          style={{ accentColor: "var(--status-good)" }}
-          onClick={(e) => e.stopPropagation()}
-        />
-
-        {/* Text */}
-        <input
-          ref={textRef}
-          className="flex-1 min-w-0 border-none bg-transparent px-1 py-0.5 rounded text-[13.5px] leading-relaxed font-[inherit]"
+      <li className="list-none">
+        {/* Main row — nest-on-hover drop target */}
+        <div
+          className="flex items-start gap-1 px-1.5 py-1 rounded-md cursor-grab select-none transition-colors duration-100"
           style={{
-            outline: "none",
-            color: node.done ? "var(--text-muted)" : "var(--text-primary)",
-            textDecoration: node.done ? "line-through" : "none",
-            fontWeight: hasChildren ? 600 : 400,
+            background: nestTarget
+              ? "var(--drop-wash)"
+              : hovered ? "var(--page-plane)" : "transparent",
+            outline: nestTarget ? "1px dashed var(--slot-1)" : "none",
           }}
-          defaultValue={node.text}
-          onBlur={(e) => {
-            if (e.target.value !== node.text) onUpdate(node.id, { text: e.target.value });
+          draggable
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onDragStart={(e) => { e.stopPropagation(); _draggingId = node.id; onDragStart(node.id); }}
+          onDragEnd={() => { _draggingId = null; }}
+          onDragOver={(e) => {
+            // Only activate nest-target if dragging over the centre of the row
+            // (not the top/bottom 30% which is handled by DropLines)
+            e.preventDefault(); e.stopPropagation();
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const relY = e.clientY - rect.top;
+            const pct = relY / rect.height;
+            setNestTarget(pct > 0.3 && pct < 0.7);
           }}
-          onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
-          onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        />
-
-        {/* Toolbar — always visible on hover */}
-        <span
-          className="flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100"
-          style={{ opacity: hovered ? 1 : 0 }}
+          onDragLeave={(e) => { e.stopPropagation(); setNestTarget(false); }}
+          onDrop={(e) => {
+            e.preventDefault(); e.stopPropagation();
+            setNestTarget(false);
+            if (_draggingId === null || _draggingId === node.id) return;
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const relY = e.clientY - rect.top;
+            const pct = relY / rect.height;
+            if (pct > 0.3 && pct < 0.7) {
+              // Nest as child
+              onDrop({ type: "child", taskId: node.id, catId: categoryId, parentId: node.id, sortOrder: node.children.length });
+            }
+            // top/bottom handled by DropLines
+          }}
         >
-          <button
-            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-            style={{
-              color: node.note ? "var(--slot-1)" : "var(--text-muted)",
-              background: "transparent",
-              border: "none",
-            }}
-            title={node.note ? "Edit note" : "Add note"}
-            onClick={(e) => { e.stopPropagation(); setNoteOpen((v) => !v); }}
-            type="button"
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--slot-1)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = node.note ? "var(--slot-1)" : "var(--text-muted)"; }}
-          >
-            <StickyNote size={11} />
-          </button>
-          <button
-            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-            style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
-            title="Add sub-item"
-            onClick={(e) => { e.stopPropagation(); onAddChild(node.id, categoryId); }}
-            type="button"
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
-          >
-            <Plus size={11} />
-          </button>
-          <button
-            className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-            style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
-            title="Delete"
-            onClick={(e) => { e.stopPropagation(); onDelete(node.id, node.text); }}
-            type="button"
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--status-critical)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
-          >
-            <Trash2 size={11} />
-          </button>
-        </span>
-      </div>
+          {/* Drag handle */}
+          <span className="mt-1 flex-shrink-0 cursor-grab" style={{ color: "var(--text-muted)", opacity: hovered ? 1 : 0, transition: "opacity 0.1s" }}>
+            <GripVertical size={12} />
+          </span>
 
-      {/* Note box */}
-      {noteOpen && (
-        <div className="ml-7 mt-0.5 mb-1">
-          <textarea
-            className="w-full max-w-md text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
-            style={{
-              color: "var(--text-secondary)",
-              background: "var(--page-plane)",
-              borderColor: "var(--border-color)",
-            }}
-            placeholder="Add a note…"
-            defaultValue={node.note}
-            onBlur={(e) => onUpdate(node.id, { note: e.target.value })}
+          {/* Collapse chevron or spacer */}
+          {hasChildren ? (
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 mt-0.5 transition-transform duration-150"
+              style={{ color: "var(--text-muted)", background: "transparent", border: "none", transform: node.collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+              onClick={() => onUpdate(node.id, { collapsed: !node.collapsed })}
+              type="button"
+            >
+              <ChevronDown size={12} />
+            </button>
+          ) : (
+            <span className="w-5 flex-shrink-0" />
+          )}
+
+          {/* Checkbox */}
+          <input
+            type="checkbox"
+            checked={node.done}
+            onChange={(e) => onUpdate(node.id, { done: e.target.checked })}
+            className="mt-1 w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
+            style={{ accentColor: "var(--status-good)" }}
             onClick={(e) => e.stopPropagation()}
           />
-        </div>
-      )}
 
-      {/* Children */}
-      {hasChildren && !node.collapsed && (
-        <ul
-          className="ml-5 pl-3 mt-0.5 list-none p-0"
-          style={{ borderLeft: "1px solid var(--gridline)" }}
-        >
-          {node.children.map((child) => (
-            <TaskItem
-              key={child.id}
-              node={child}
-              categoryId={categoryId}
-              depth={depth + 1}
-              query={query}
-              showCompleted={showCompleted}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-              onAddChild={onAddChild}
-              onDragStart={onDragStart}
-              onDropOnTask={onDropOnTask}
-              onDropOnCategory={() => {}}
+          {/* Text */}
+          <input
+            className="flex-1 min-w-0 border-none bg-transparent px-1 py-0.5 rounded text-[13.5px] leading-relaxed font-[inherit]"
+            style={{
+              outline: "none",
+              color: node.done ? "var(--text-muted)" : "var(--text-primary)",
+              textDecoration: node.done ? "line-through" : "none",
+              fontWeight: hasChildren ? 600 : 400,
+            }}
+            defaultValue={node.text}
+            onBlur={(e) => { if (e.target.value !== node.text) onUpdate(node.id, { text: e.target.value }); }}
+            onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
+            onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {/* Toolbar */}
+          <span className="flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: node.note ? "var(--slot-1)" : "var(--text-muted)", background: "transparent", border: "none" }}
+              title={node.note ? "Edit note" : "Add note"}
+              onClick={(e) => { e.stopPropagation(); setNoteOpen((v) => !v); }}
+              type="button"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--slot-1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = node.note ? "var(--slot-1)" : "var(--text-muted)"; }}
+            >
+              <StickyNote size={11} />
+            </button>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
+              title="Add sub-item"
+              onClick={(e) => { e.stopPropagation(); onAddChild(node.id, categoryId); }}
+              type="button"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+            >
+              <Plus size={11} />
+            </button>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
+              title="Delete"
+              onClick={(e) => { e.stopPropagation(); onDelete(node.id, node.text); }}
+              type="button"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--status-critical)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+            >
+              <Trash2 size={11} />
+            </button>
+          </span>
+        </div>
+
+        {/* Note box */}
+        {noteOpen && (
+          <div className="ml-7 mt-0.5 mb-1">
+            <textarea
+              className="w-full max-w-md text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
+              style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+              placeholder="Add a note…"
+              defaultValue={node.note}
+              onBlur={(e) => onUpdate(node.id, { note: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
             />
-          ))}
-        </ul>
+          </div>
+        )}
+
+        {/* Children */}
+        {hasChildren && !node.collapsed && (
+          <ul className="ml-5 pl-3 mt-0.5 list-none p-0" style={{ borderLeft: "1px solid var(--gridline)" }}>
+            {node.children.map((child, idx) => (
+              <TaskItem
+                key={child.id}
+                node={child}
+                categoryId={categoryId}
+                depth={depth + 1}
+                query={query}
+                showCompleted={showCompleted}
+                siblingCount={node.children.length}
+                siblingIndex={idx}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+                onAddChild={onAddChild}
+                onDragStart={onDragStart}
+                onDrop={onDrop}
+              />
+            ))}
+            {/* Drop zone after last child */}
+            <DropLine
+              catId={categoryId}
+              parentId={node.id}
+              sortOrder={node.children.length}
+              onDrop={onDrop}
+            />
+          </ul>
+        )}
+      </li>
+
+      {/* Drop zone AFTER last sibling */}
+      {siblingIndex === siblingCount - 1 && (
+        <DropLine
+          catId={categoryId}
+          parentId={node.parentId ?? null}
+          sortOrder={siblingCount}
+          onDrop={onDrop}
+        />
       )}
-    </li>
+    </>
   );
 }
 
-// ---- Category Card Component ----
+// ---- CategoryCard ----
 interface CategoryCardProps {
   cat: Category;
   tasks: Task[];
@@ -281,23 +340,12 @@ interface CategoryCardProps {
   onDeleteTask: (id: number, text: string) => void;
   onAddTask: (catId: number, parentId?: number) => void;
   onDragStart: (taskId: number) => void;
-  onDropOnTask: (targetTaskId: number) => void;
-  onDropOnCategory: (catId: number) => void;
+  onDrop: (target: DropTarget) => void;
 }
 
 function CategoryCard({
-  cat,
-  tasks,
-  query,
-  showCompleted,
-  onUpdateCat,
-  onDeleteCat,
-  onUpdateTask,
-  onDeleteTask,
-  onAddTask,
-  onDragStart,
-  onDropOnTask,
-  onDropOnCategory,
+  cat, tasks, query, showCompleted,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop,
 }: CategoryCardProps) {
   const [catDropTarget, setCatDropTarget] = useState(false);
   const tree = useMemo(() => buildTree(tasks), [tasks]);
@@ -313,17 +361,19 @@ function CategoryCard({
       className="rounded-2xl mb-3.5 overflow-hidden transition-colors duration-100"
       style={{
         background: catDropTarget ? "var(--drop-wash)" : "var(--card-surface)",
-        border: cat.kind === "urgent"
-          ? "1.5px solid var(--status-critical)"
-          : "1px solid var(--border-color)",
+        border: cat.kind === "urgent" ? "1.5px solid var(--status-critical)" : "1px solid var(--border-color)",
       }}
       onDragOver={(e) => { e.preventDefault(); setCatDropTarget(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCatDropTarget(false); }}
       onDrop={(e) => {
         setCatDropTarget(false);
-        if ((e.target as HTMLElement).closest("[data-task-row]")) return;
+        // Only handle drops that land directly on the card (not on a task row or drop-line)
+        const target = e.target as HTMLElement;
+        if (target.closest("[data-task-item]") || target.closest("[data-drop-line]")) return;
         e.preventDefault();
-        onDropOnCategory(cat.id);
+        if (_draggingId === null) return;
+        const topLevel = tasks.filter((t) => (t.parentId ?? null) === null);
+        onDrop({ type: "cat", catId: cat.id, parentId: null, sortOrder: topLevel.length });
       }}
     >
       {/* Header */}
@@ -331,20 +381,13 @@ function CategoryCard({
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <button
             className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 transition-transform duration-150"
-            style={{
-              color: "var(--text-muted)",
-              background: "transparent",
-              border: "none",
-              transform: cat.collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-            }}
+            style={{ color: "var(--text-muted)", background: "transparent", border: "none", transform: cat.collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
             onClick={() => onUpdateCat(cat.id, { collapsed: !cat.collapsed })}
             type="button"
           >
             <ChevronDown size={14} />
           </button>
-
           <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: color }} />
-
           <input
             className="font-semibold text-[14.5px] bg-transparent border-none px-1 py-0.5 rounded min-w-0 font-[inherit]"
             style={{ color: "var(--text-primary)", outline: "none" }}
@@ -354,7 +397,6 @@ function CategoryCard({
             onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
             onClick={(e) => e.stopPropagation()}
           />
-
           <span
             className="text-[11px] px-2 py-0.5 rounded-full border flex-shrink-0"
             style={{
@@ -366,13 +408,9 @@ function CategoryCard({
             {total} item{total !== 1 ? "s" : ""}
           </span>
         </div>
-
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--gridline)" }}>
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${progressPct}%`, background: "var(--status-good)" }}
-            />
+            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: "var(--status-good)" }} />
           </div>
           <button
             className="w-5 h-5 flex items-center justify-center rounded transition-colors"
@@ -391,8 +429,12 @@ function CategoryCard({
       {/* Body */}
       {!cat.collapsed && (
         <div className="px-4 pb-3.5">
-          <ul className="list-none m-0 p-0 min-h-[6px]">
-            {tree.map((node) => (
+          <ul className="list-none m-0 p-0 min-h-[6px]" data-cat-body={cat.id}>
+            {/* Drop zone at very top of empty/non-empty list */}
+            {tree.length === 0 && (
+              <DropLine catId={cat.id} parentId={null} sortOrder={0} onDrop={onDrop} />
+            )}
+            {tree.map((node, idx) => (
               <TaskItem
                 key={node.id}
                 node={node}
@@ -400,12 +442,13 @@ function CategoryCard({
                 depth={0}
                 query={query}
                 showCompleted={showCompleted}
+                siblingCount={tree.length}
+                siblingIndex={idx}
                 onUpdate={onUpdateTask}
                 onDelete={onDeleteTask}
                 onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
                 onDragStart={onDragStart}
-                onDropOnTask={onDropOnTask}
-                onDropOnCategory={onDropOnCategory}
+                onDrop={onDrop}
               />
             ))}
           </ul>
@@ -441,47 +484,36 @@ export default function Dashboard() {
   const [newCatName, setNewCatName] = useState("");
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
 
-  // Mutations
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
   const updateCatMut = trpc.categories.update.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
   const deleteCatMut = trpc.categories.delete.useMutation({
-    onSuccess: () => {
-      utils.categories.list.invalidate();
-      utils.tasks.listAll.invalidate();
-    },
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); },
   });
-
+  const createCatRestoreMut = trpc.categories.create.useMutation({
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); },
+  });
   const createTaskMut = trpc.tasks.create.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const updateTaskMut = trpc.tasks.update.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const deleteTaskMut = trpc.tasks.delete.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
-
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const importMut = trpc.data.import.useMutation({
-    onSuccess: () => {
-      utils.categories.list.invalidate();
-      utils.tasks.listAll.invalidate();
-      toast.success("Snapshot imported successfully");
-    },
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
   });
-  const createCatRestoreMut = trpc.categories.create.useMutation({ onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); } });
 
-  // Derived active cats set — default to all
   const effectiveActiveCats = useMemo(() => {
     if (activeCats !== null) return activeCats;
     return new Set(categoriesData.map((c) => c.id));
   }, [activeCats, categoriesData]);
 
-  // Stats
   const stats = useMemo(() => {
     let total = 0, done = 0, urgent = 0;
     for (const cat of categoriesData) {
       const catTasks = tasksData.filter((t) => t.categoryId === cat.id);
       const tree = buildTree(catTasks);
       const counts = countNodes(tree);
-      total += counts.total;
-      done += counts.done;
+      total += counts.total; done += counts.done;
       if (cat.kind === "urgent") urgent = counts.total;
     }
     return { total, done, urgent, categories: categoriesData.length };
@@ -492,7 +524,6 @@ export default function Dashboard() {
   }, [updateCatMut]);
 
   const handleDeleteCat = useCallback((id: number, name: string) => {
-    // Capture the category and its tasks before deleting for undo
     const cat = categoriesData.find((c) => c.id === id);
     const catTasks = tasksData.filter((t) => t.categoryId === id);
     deleteCatMut.mutate({ id });
@@ -502,13 +533,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!cat) return;
-          // Re-create the category (tasks will need to be re-added manually — full undo not possible server-side without transactions)
-          createCatRestoreMut.mutate({
-            name: cat.name,
-            kind: cat.kind,
-            colorIndex: cat.colorIndex,
-            sortOrder: cat.sortOrder,
-          });
+          createCatRestoreMut.mutate({ name: cat.name, kind: cat.kind, colorIndex: cat.colorIndex, sortOrder: cat.sortOrder });
           toast.info(`Category "${name}" restored. You may need to re-add its ${catTasks.length} tasks.`);
         },
       },
@@ -520,7 +545,6 @@ export default function Dashboard() {
   }, [updateTaskMut]);
 
   const handleDeleteTask = useCallback((id: number, text: string) => {
-    // Capture the task and its subtree for undo
     const task = tasksData.find((t) => t.id === id);
     deleteTaskMut.mutate({ id });
     toast(`Removed "${text}"`, {
@@ -529,13 +553,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!task) return;
-          // Re-create the task at its original location
-          createTaskMut.mutate({
-            categoryId: task.categoryId,
-            parentId: task.parentId ?? undefined,
-            text: task.text,
-            sortOrder: task.sortOrder,
-          });
+          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder });
           toast.success(`"${text}" restored.`);
         },
       },
@@ -543,9 +561,7 @@ export default function Dashboard() {
   }, [deleteTaskMut, createTaskMut, tasksData]);
 
   const handleAddTask = useCallback((catId: number, parentId?: number) => {
-    const siblings = tasksData.filter(
-      (t) => t.categoryId === catId && (t.parentId ?? null) === (parentId ?? null)
-    );
+    const siblings = tasksData.filter((t) => t.categoryId === catId && (t.parentId ?? null) === (parentId ?? null));
     createTaskMut.mutate({ categoryId: catId, parentId, text: "New item", sortOrder: siblings.length });
   }, [createTaskMut, tasksData]);
 
@@ -559,30 +575,28 @@ export default function Dashboard() {
     setNewCatName("");
   }, [newCatName, categoriesData, createCatMut]);
 
-  const handleDropOnTask = useCallback((targetTaskId: number) => {
-    if (!draggingTaskId || draggingTaskId === targetTaskId) return;
-    const targetTask = tasksData.find((t) => t.id === targetTaskId);
-    if (!targetTask) return;
-    reorderTaskMut.mutate([{
-      id: draggingTaskId,
-      sortOrder: 0,
-      parentId: targetTaskId,
-      categoryId: targetTask.categoryId,
-    }]);
-    setDraggingTaskId(null);
-  }, [draggingTaskId, tasksData, reorderTaskMut]);
+  // ---- Central drop handler ----
+  const handleDrop = useCallback((target: DropTarget) => {
+    const id = _draggingId;
+    if (id === null) return;
+    if (id === target.taskId) return; // can't drop on itself
 
-  const handleDropOnCategory = useCallback((catId: number) => {
-    if (!draggingTaskId) return;
-    const topLevel = tasksData.filter((t) => t.categoryId === catId && (t.parentId ?? null) === null);
-    reorderTaskMut.mutate([{
-      id: draggingTaskId,
-      sortOrder: topLevel.length,
-      parentId: null,
-      categoryId: catId,
-    }]);
+    // Recalculate sortOrder among siblings at the destination to avoid gaps
+    const siblings = tasksData
+      .filter((t) => t.categoryId === target.catId && (t.parentId ?? null) === target.parentId && t.id !== id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    // Insert at the desired position and renumber
+    const updates: Array<{ id: number; sortOrder: number; parentId: number | null; categoryId: number }> = [];
+    siblings.splice(target.sortOrder, 0, { id, sortOrder: 0, categoryId: target.catId, parentId: target.parentId } as Task);
+    siblings.forEach((t, i) => {
+      updates.push({ id: t.id, sortOrder: i, parentId: target.parentId, categoryId: target.catId });
+    });
+
+    reorderTaskMut.mutate(updates);
+    _draggingId = null;
     setDraggingTaskId(null);
-  }, [draggingTaskId, tasksData, reorderTaskMut]);
+  }, [tasksData, reorderTaskMut]);
 
   const handleExport = useCallback(async () => {
     const result = await exportQuery.refetch();
@@ -595,9 +609,7 @@ export default function Dashboard() {
     const d = new Date();
     const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     a.download = `todo-dashboard-${stamp}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [exportQuery]);
 
@@ -609,39 +621,22 @@ export default function Dashboard() {
       try {
         const parsed = JSON.parse(reader.result as string);
         if (!parsed.categories) throw new Error("Missing categories");
-
         const cats = (parsed.categories as Category[]).map((c, i) => ({
-          name: c.name,
-          kind: c.kind,
-          colorIndex: c.colorIndex ?? i % 8,
-          sortOrder: c.sortOrder ?? i,
-          collapsed: c.collapsed ?? false,
+          name: c.name, kind: c.kind, colorIndex: c.colorIndex ?? i % 8, sortOrder: c.sortOrder ?? i, collapsed: c.collapsed ?? false,
         }));
-
-        // Build flat task list with tempIds for hierarchy reconstruction
         const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number }> = [];
-
         if (parsed.tasks && Array.isArray(parsed.tasks)) {
-          // New export format: flat tasks array
           (parsed.tasks as Task[]).forEach((t, i) => {
             const catIdxReal = parsed.categories.findIndex((c: Category) => c.id === t.categoryId);
             flatTasks.push({
-              tempId: `t${i}`,
-              categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
+              tempId: `t${i}`, categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
               parentTempId: t.parentId ? `t${parsed.tasks.findIndex((pt: Task) => pt.id === t.parentId)}` : null,
-              text: t.text,
-              note: t.note ?? "",
-              done: t.done ?? false,
-              collapsed: t.collapsed ?? false,
-              sortOrder: t.sortOrder ?? i,
+              text: t.text, note: t.note ?? "", done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
             });
           });
         }
-
         importMut.mutate({ categories: cats, tasks: flatTasks });
-      } catch {
-        toast.error("Could not read that file — is it a dashboard export?");
-      }
+      } catch { toast.error("Could not read that file — is it a dashboard export?"); }
     };
     reader.readAsText(file);
     e.target.value = "";
@@ -678,8 +673,7 @@ export default function Dashboard() {
               style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-secondary)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-color)"; }}
-              onClick={handleExport}
-              type="button"
+              onClick={handleExport} type="button"
             >
               <FileDown size={13} /> Export snapshot
             </button>
@@ -693,8 +687,7 @@ export default function Dashboard() {
             <button
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
               style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
-              onClick={toggleTheme}
-              type="button"
+              onClick={toggleTheme} type="button"
             >
               {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
               {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -710,14 +703,8 @@ export default function Dashboard() {
             { label: "Categories", value: stats.categories, urgent: false },
             { label: "Completed", value: stats.done, urgent: false },
           ].map(({ label, value, urgent }) => (
-            <div
-              key={label}
-              className="rounded-xl border px-4 py-3.5"
-              style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}
-            >
-              <div className="text-[26px] font-bold leading-none" style={{ color: urgent ? "var(--status-critical)" : "var(--text-primary)" }}>
-                {value}
-              </div>
+            <div key={label} className="rounded-xl border px-4 py-3.5" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+              <div className="text-[26px] font-bold leading-none" style={{ color: urgent ? "var(--status-critical)" : "var(--text-primary)" }}>{value}</div>
               <div className="text-[12px] mt-1" style={{ color: "var(--text-secondary)" }}>{label}</div>
             </div>
           ))}
@@ -739,13 +726,8 @@ export default function Dashboard() {
           </div>
           <button
             className="px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
-            style={{
-              background: "var(--card-surface)",
-              color: showCompleted ? "var(--text-primary)" : "var(--text-secondary)",
-              borderColor: showCompleted ? "var(--text-primary)" : "var(--border-color)",
-            }}
-            onClick={() => setShowCompleted((v) => !v)}
-            type="button"
+            style={{ background: "var(--card-surface)", color: showCompleted ? "var(--text-primary)" : "var(--text-secondary)", borderColor: showCompleted ? "var(--text-primary)" : "var(--border-color)" }}
+            onClick={() => setShowCompleted((v) => !v)} type="button"
           >
             {showCompleted ? "Hide completed" : "Show completed"}
           </button>
@@ -766,8 +748,7 @@ export default function Dashboard() {
           <button
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
             style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-            onClick={handleAddCategory}
-            type="button"
+            onClick={handleAddCategory} type="button"
           >
             <Plus size={12} /> Add category
           </button>
@@ -781,13 +762,8 @@ export default function Dashboard() {
               <button
                 key={cat.id}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
-                style={{
-                  background: "var(--card-surface)",
-                  color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                  borderColor: isActive ? "var(--text-primary)" : "var(--border-color)",
-                }}
-                onClick={() => toggleCat(cat.id)}
-                type="button"
+                style={{ background: "var(--card-surface)", color: isActive ? "var(--text-primary)" : "var(--text-secondary)", borderColor: isActive ? "var(--text-primary)" : "var(--border-color)" }}
+                onClick={() => toggleCat(cat.id)} type="button"
               >
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(cat) }} />
                 {cat.name}
@@ -796,14 +772,10 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* Loading */}
         {isLoading && (
-          <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>
-            Loading your tasks…
-          </div>
+          <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>Loading your tasks…</div>
         )}
 
-        {/* Category cards */}
         {!isLoading && (
           <div>
             {categoriesData
@@ -821,8 +793,7 @@ export default function Dashboard() {
                   onDeleteTask={handleDeleteTask}
                   onAddTask={handleAddTask}
                   onDragStart={setDraggingTaskId}
-                  onDropOnTask={handleDropOnTask}
-                  onDropOnCategory={handleDropOnCategory}
+                  onDrop={handleDrop}
                 />
               ))}
             {categoriesData.filter((c) => effectiveActiveCats.has(c.id)).length === 0 && (
@@ -838,11 +809,9 @@ export default function Dashboard() {
         </footer>
       </div>
 
-      {/* Mobile responsive styles */}
       <style>{`
-        @media (max-width: 640px) {
-          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
-        }
+        @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+        @media (hover: none) { .task-toolbar { opacity: 1 !important; } }
       `}</style>
     </div>
   );

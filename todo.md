@@ -49,3 +49,10 @@
 - [x] Vitest: data export/import procedures (2 tests)
 - [x] Vitest: auth router (1 test)
 - [x] Vitest: auth logout (1 test)
+
+## Drag-and-Drop Improvements
+- [x] Full cross-category drag: move any task to any other category as a top-level item
+- [x] Re-parent drag: drop task onto another task to nest it as a child
+- [x] Move sub-item to top-level of same or different category
+- [x] Visual drop zones between items and on category header drop areas
+- [x] Persist new categoryId, parentId, and sortOrder on every drop
