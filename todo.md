@@ -1,0 +1,51 @@
+# Stephen's To-Do Dashboard — Project TODO
+
+## Database & Backend
+- [x] Define schema: categories, tasks (hierarchical), notes
+- [x] Generate and apply migration SQL
+- [x] Seed 9 original categories with all original tasks
+- [x] tRPC procedures: list, create, update, delete, reorder categories
+- [x] tRPC procedures: list, create, update, delete, reorder tasks
+- [x] tRPC procedures: move task between categories / re-parent
+- [x] Export all data as JSON
+- [x] Import JSON snapshot (replace all data)
+
+## Frontend — Layout & Theme
+- [x] Apply original design system CSS variables (light + dark)
+- [x] Light/Dark theme toggle
+- [x] Responsive layout (mobile, tablet, desktop)
+- [x] Stats bar: Total items, Urgent, Categories, Completed
+
+## Frontend — Categories
+- [x] Render category cards with color-coded dots
+- [x] Collapse/expand categories
+- [x] Rename category inline
+- [x] Add new category
+- [x] Delete category with undo toast
+- [x] Per-category progress bar
+- [x] Category filter chips
+- [x] URGENT category special styling (red border)
+
+## Frontend — Tasks
+- [x] Render hierarchical tasks (unlimited nesting)
+- [x] Inline text editing
+- [x] Check off / mark complete
+- [x] Add sub-item
+- [x] Add/edit per-item notes (expandable textarea)
+- [x] Delete task with undo toast
+- [x] Collapse/expand parent items
+- [x] Drag-and-drop reorder within category
+- [x] Drag-and-drop move between categories
+- [x] Show/Hide completed toggle
+- [x] Search/filter across all items and notes
+
+## Frontend — Data Management
+- [x] Export snapshot to JSON
+- [x] Import snapshot from JSON file
+
+## Tests
+- [x] Vitest: category CRUD procedures (5 tests)
+- [x] Vitest: task CRUD procedures (8 tests)
+- [x] Vitest: data export/import procedures (2 tests)
+- [x] Vitest: auth router (1 test)
+- [x] Vitest: auth logout (1 test)

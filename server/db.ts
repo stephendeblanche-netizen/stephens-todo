@@ -1,15 +1,20 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { InsertUser, categories, tasks, users } from "../drizzle/schema";
+import { ENV } from "./_core/env";
+import { seedIfEmpty } from "./seed";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _seeded = false;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
+      if (!_seeded) {
+        _seeded = true;
+        await seedIfEmpty(_db);
+      }
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -18,75 +23,160 @@ export async function getDb() {
   return _db;
 }
 
+// ---- Users ----
+
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
+  if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
+  if (!db) { console.warn("[Database] Cannot upsert user: database not available"); return; }
 
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
+  const values: InsertUser = { openId: user.openId };
+  const updateSet: Record<string, unknown> = {};
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
+  const textFields = ["name", "email", "loginMethod"] as const;
+  type TextField = (typeof textFields)[number];
+  const assignNullable = (field: TextField) => {
+    const value = user[field];
+    if (value === undefined) return;
+    const normalized = value ?? null;
+    values[field] = normalized;
+    updateSet[field] = normalized;
+  };
+  textFields.forEach(assignNullable);
 
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
+  if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
+  if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
+  else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
+  if (!values.lastSignedIn) values.lastSignedIn = new Date();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
 
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
+  if (!db) { console.warn("[Database] Cannot get user: database not available"); return undefined; }
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// ---- Categories ----
+
+export async function getAllCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(categories).orderBy(asc(categories.sortOrder));
+}
+
+export async function createCategory(data: { name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(categories).values({ ...data, collapsed: false });
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+export async function updateCategory(id: number, data: Partial<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(categories).set(data).where(eq(categories.id, id));
+}
+
+export async function deleteCategory(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Delete all tasks in this category first
+  await db.delete(tasks).where(eq(tasks.categoryId, id));
+  await db.delete(categories).where(eq(categories.id, id));
+}
+
+// ---- Tasks ----
+
+export async function getTasksByCategory(categoryId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tasks).where(eq(tasks.categoryId, categoryId)).orderBy(asc(tasks.sortOrder));
+}
+
+export async function getAllTasks() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
+}
+
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tasks).values({
+    categoryId: data.categoryId,
+    parentId: data.parentId,
+    text: data.text,
+    note: "",
+    done: false,
+    collapsed: false,
+    sortOrder: data.sortOrder,
+  });
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+export async function updateTask(id: number, data: Partial<{ text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tasks).set(data).where(eq(tasks.id, id));
+}
+
+export async function deleteTask(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Recursively delete children
+  const children = await db.select().from(tasks).where(eq(tasks.parentId, id));
+  for (const child of children) {
+    await deleteTask(child.id);
+  }
+  await db.delete(tasks).where(eq(tasks.id, id));
+}
+
+export async function getTopLevelTasks(categoryId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tasks).where(and(eq(tasks.categoryId, categoryId), isNull(tasks.parentId))).orderBy(asc(tasks.sortOrder));
+}
+
+// ---- Bulk import ----
+
+export async function replaceAllData(
+  newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number }>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // Clear all
+  await db.delete(tasks);
+  await db.delete(categories);
+
+  // Re-insert categories and build index map
+  const catIds: number[] = [];
+  for (const cat of newCategories) {
+    const [result] = await db.insert(categories).values(cat);
+    catIds.push((result as unknown as { insertId: number }).insertId);
+  }
+
+  // Re-insert tasks in order, tracking tempId -> real id for parent resolution
+  const taskIdMap = new Map<string, number>();
+  for (const task of newTasks) {
+    const catId = catIds[task.categoryIndex];
+    if (!catId) continue;
+    const parentId = task.parentTempId ? taskIdMap.get(task.parentTempId) : undefined;
+    const [result] = await db.insert(tasks).values({
+      categoryId: catId,
+      parentId,
+      text: task.text,
+      note: task.note,
+      done: task.done,
+      collapsed: task.collapsed,
+      sortOrder: task.sortOrder,
+    });
+    const newId = (result as unknown as { insertId: number }).insertId;
+    taskIdMap.set(task.tempId, newId);
+  }
+}
