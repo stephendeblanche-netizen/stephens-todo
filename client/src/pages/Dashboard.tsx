@@ -53,6 +53,8 @@ function countNodes(nodes: TaskNode[]): { total: number; done: number } {
 // We store the dragging task id in a module-level variable so all drop targets
 // can read it without needing to pass it through every component.
 let _draggingId: number | null = null;
+// Module-level variable for category drag (separate from task drag)
+let _draggingCatId: number | null = null;
 
 // ---- Drop zone types ----
 // "before" = insert before this task (same parent/category)
@@ -363,11 +365,44 @@ interface CategoryCardProps {
   onDrop: (target: DropTarget) => void;
 }
 
+// ---- CatDropLine — thin line between category cards ----
+interface CatDropLineProps {
+  insertBefore: number; // sortOrder position to insert at
+  onCatDrop: (insertBefore: number) => void;
+}
+function CatDropLine({ insertBefore, onCatDrop }: CatDropLineProps) {
+  const [active, setActive] = useState(false);
+  return (
+    <div
+      style={{ height: active ? "8px" : "4px", margin: "2px 0", transition: "height 0.1s", position: "relative" }}
+      onDragOver={(e) => {
+        // Only activate for category drags, not task drags
+        if (_draggingCatId === null) return;
+        e.preventDefault(); e.stopPropagation(); setActive(true);
+      }}
+      onDragLeave={() => setActive(false)}
+      onDrop={(e) => {
+        if (_draggingCatId === null) return;
+        e.preventDefault(); e.stopPropagation();
+        setActive(false);
+        onCatDrop(insertBefore);
+      }}
+    >
+      <div style={{
+        height: "2px", borderRadius: "2px", margin: "0 8px",
+        background: active ? "var(--slot-2)" : "transparent",
+        transition: "background 0.1s",
+      }} />
+    </div>
+  );
+}
+
 function CategoryCard({
   cat, tasks, query, showCompleted,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop,
 }: CategoryCardProps) {
   const [catDropTarget, setCatDropTarget] = useState(false);
+  const [isDraggingThis, setIsDraggingThis] = useState(false);
   const tree = useMemo(() => buildTree(tasks), [tasks]);
   const { total, done } = useMemo(() => countNodes(tree), [tree]);
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -383,6 +418,17 @@ function CategoryCard({
         background: catDropTarget ? "var(--drop-wash)" : "var(--card-surface)",
         border: cat.kind === "urgent" ? "1.5px solid var(--status-critical)" : "1px solid var(--border-color)",
       }}
+      draggable
+      onDragStart={(e) => {
+        // Only start category drag if the drag handle was clicked
+        // We use a data attribute set on the handle to gate this
+        const handle = (e.target as HTMLElement).closest("[data-cat-drag-handle]");
+        if (!handle) { e.preventDefault(); return; }
+        _draggingCatId = cat.id;
+        setIsDraggingThis(true);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={() => { _draggingCatId = null; setIsDraggingThis(false); }}
       onDragOver={(e) => { e.preventDefault(); setCatDropTarget(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCatDropTarget(false); }}
       onDrop={(e) => {
@@ -395,10 +441,22 @@ function CategoryCard({
         const topLevel = tasks.filter((t) => (t.parentId ?? null) === null);
         onDrop({ type: "cat", catId: cat.id, parentId: null, sortOrder: topLevel.length });
       }}
+      data-cat-id={cat.id}
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2.5 px-4 py-3 select-none">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {/* Category drag handle */}
+          <span
+            data-cat-drag-handle
+            className="flex-shrink-0 cursor-grab"
+            style={{ color: "var(--text-muted)", opacity: 0.4, transition: "opacity 0.1s" }}
+            title="Drag to reorder category"
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.4"; }}
+          >
+            <GripVertical size={14} />
+          </span>
           <button
             className="w-5 h-5 flex items-center justify-center rounded flex-shrink-0 transition-transform duration-150"
             style={{ color: "var(--text-muted)", background: "transparent", border: "none", transform: cat.collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
@@ -517,6 +575,7 @@ export default function Dashboard() {
   const deleteTaskMut = trpc.tasks.delete.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
+  const reorderCatMut = trpc.categories.reorder.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
   const importMut = trpc.data.import.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
@@ -595,7 +654,34 @@ export default function Dashboard() {
     setNewCatName("");
   }, [newCatName, categoriesData, createCatMut]);
 
-  // ---- Central drop handler ----
+  // ---- Category drop handler ----
+  const handleCatDrop = useCallback((insertBefore: number) => {
+    const id = _draggingCatId;
+    if (id === null) return;
+    _draggingCatId = null;
+
+    // Always work against the full sorted list (not just visible filtered cats)
+    // so the resulting sortOrder values are globally consistent.
+    const sorted = [...categoriesData].sort((a, b) => a.sortOrder - b.sortOrder);
+    const dragged = sorted.find((c) => c.id === id);
+    if (!dragged) return;
+
+    // The insertBefore index is relative to the visible (filtered) list.
+    // Map it back to the full list: find the category at that visible position.
+    const visible = sorted.filter((c) => effectiveActiveCats.has(c.id));
+    // The category that will be just after the drop point in the visible list
+    const afterCat = visible[insertBefore] ?? null;
+
+    // Remove dragged from full list, then insert just before afterCat (or at end)
+    const without = sorted.filter((c) => c.id !== id);
+    const insertIdx = afterCat ? without.findIndex((c) => c.id === afterCat.id) : without.length;
+    without.splice(insertIdx < 0 ? without.length : insertIdx, 0, dragged);
+
+    const updates = without.map((c, i) => ({ id: c.id, sortOrder: i }));
+    reorderCatMut.mutate(updates);
+  }, [categoriesData, effectiveActiveCats, reorderCatMut]);
+
+  // ---- Central task drop handler ----
   const handleDrop = useCallback((target: DropTarget) => {
     const id = _draggingId;
     if (id === null) return;
@@ -798,23 +884,29 @@ export default function Dashboard() {
 
         {!isLoading && (
           <div>
+            {/* Drop line before first category */}
+            <CatDropLine insertBefore={0} onCatDrop={handleCatDrop} />
             {categoriesData
               .filter((cat) => effectiveActiveCats.has(cat.id))
-              .map((cat) => (
-                <CategoryCard
-                  key={cat.id}
-                  cat={cat}
-                  tasks={tasksData.filter((t) => t.categoryId === cat.id)}
-                  query={query.toLowerCase()}
-                  showCompleted={showCompleted}
-                  onUpdateCat={handleUpdateCat}
-                  onDeleteCat={handleDeleteCat}
-                  onUpdateTask={handleUpdateTask}
-                  onDeleteTask={handleDeleteTask}
-                  onAddTask={handleAddTask}
-                  onDragStart={setDraggingTaskId}
-                  onDrop={handleDrop}
-                />
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((cat, idx, arr) => (
+                <div key={cat.id}>
+                  <CategoryCard
+                    cat={cat}
+                    tasks={tasksData.filter((t) => t.categoryId === cat.id)}
+                    query={query.toLowerCase()}
+                    showCompleted={showCompleted}
+                    onUpdateCat={handleUpdateCat}
+                    onDeleteCat={handleDeleteCat}
+                    onUpdateTask={handleUpdateTask}
+                    onDeleteTask={handleDeleteTask}
+                    onAddTask={handleAddTask}
+                    onDragStart={setDraggingTaskId}
+                    onDrop={handleDrop}
+                  />
+                  {/* Drop line after each category */}
+                  <CatDropLine insertBefore={idx + 1} onCatDrop={handleCatDrop} />
+                </div>
               ))}
             {categoriesData.filter((c) => effectiveActiveCats.has(c.id)).length === 0 && (
               <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>

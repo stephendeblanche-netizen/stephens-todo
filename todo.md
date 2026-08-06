@@ -56,3 +56,8 @@
 - [x] Move sub-item to top-level of same or different category
 - [x] Visual drop zones between items and on category header drop areas
 - [x] Persist new categoryId, parentId, and sortOrder on every drop
+
+## Category Reordering
+- [x] Drag category cards up/down to reorder them
+- [x] Show drop-line between category cards while dragging
+- [x] Persist new sortOrder for all affected categories on drop
