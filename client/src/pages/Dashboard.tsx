@@ -274,13 +274,33 @@ function TaskItem({
         {noteOpen && (
           <div className="ml-7 mt-0.5 mb-1">
             <textarea
+              id={`note-${node.id}`}
               className="w-full max-w-md text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
               style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-              placeholder="Add a note…"
+              placeholder="Add a note\u2026"
               defaultValue={node.note}
               onBlur={(e) => onUpdate(node.id, { note: e.target.value })}
               onClick={(e) => e.stopPropagation()}
             />
+            {node.note && (
+              <button
+                className="mt-1 text-[11px] flex items-center gap-1 cursor-pointer font-[inherit] border-none bg-transparent px-0 py-0.5 transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                type="button"
+                title="Clear note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const ta = document.getElementById(`note-${node.id}`) as HTMLTextAreaElement | null;
+                  if (ta) ta.value = "";
+                  onUpdate(node.id, { note: "" });
+                  setNoteOpen(false);
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--status-critical)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+              >
+                <Trash2 size={10} /> Clear note
+              </button>
+            )}
           </div>
         )}
 
