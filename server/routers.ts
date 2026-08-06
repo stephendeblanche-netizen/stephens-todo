@@ -123,6 +123,35 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    clearCompleted: publicProcedure
+      .input(z.object({ categoryId: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const allTasks = await getAllTasks();
+        const catTasks = allTasks.filter((t) => t.categoryId === input.categoryId);
+
+        // Helper: does a task have any undone descendants?
+        function hasUndoneDescendant(taskId: number): boolean {
+          const children = catTasks.filter((t) => t.parentId === taskId);
+          for (const child of children) {
+            if (!child.done) return true;
+            if (hasUndoneDescendant(child.id)) return true;
+          }
+          return false;
+        }
+
+        // Only delete done tasks that have NO undone descendants
+        // (so we don't silently wipe incomplete sub-items)
+        const toDelete = catTasks.filter((t) => t.done && !hasUndoneDescendant(t.id));
+
+        let deleted = 0;
+        for (const task of toDelete) {
+          // Check it hasn't already been removed as a child of a previously deleted task
+          const current = (await getAllTasks()).find((t) => t.id === task.id);
+          if (current) { await deleteTask(task.id); deleted++; }
+        }
+        return { success: true, deleted };
+      }),
+
     reorder: publicProcedure
       .input(z.array(z.object({ id: z.number().int(), sortOrder: z.number().int(), parentId: z.number().int().nullable().optional(), categoryId: z.number().int().optional() })))
       .mutation(async ({ input }) => {

@@ -364,6 +364,20 @@ interface CategoryCardProps {
   onDragStart: (taskId: number) => void;
   onDrop: (target: DropTarget) => void;
 }
+interface CategoryCardProps {
+  cat: Category;
+  tasks: Task[];
+  query: string;
+  showCompleted: boolean;
+  onUpdateCat: (id: number, data: Partial<Category>) => void;
+  onDeleteCat: (id: number, name: string) => void;
+  onUpdateTask: (id: number, data: Partial<Task>) => void;
+  onDeleteTask: (id: number, text: string) => void;
+  onAddTask: (catId: number, parentId?: number) => void;
+  onDragStart: (taskId: number) => void;
+  onDrop: (target: DropTarget) => void;
+  onClearCompleted: (catId: number) => void;
+}
 
 // ---- CatDropLine — thin line between category cards ----
 interface CatDropLineProps {
@@ -399,7 +413,7 @@ function CatDropLine({ insertBefore, onCatDrop }: CatDropLineProps) {
 
 function CategoryCard({
   cat, tasks, query, showCompleted,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop, onClearCompleted,
 }: CategoryCardProps) {
   const [catDropTarget, setCatDropTarget] = useState(false);
   const [isDraggingThis, setIsDraggingThis] = useState(false);
@@ -531,16 +545,31 @@ function CategoryCard({
             ))}
           </ul>
           {!query && (
-            <button
-              className="mt-1.5 text-[12px] bg-transparent border-none cursor-pointer font-[inherit] px-1.5 py-1 transition-colors"
-              style={{ color: "var(--text-muted)" }}
-              onClick={() => onAddTask(cat.id)}
-              type="button"
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; (e.currentTarget as HTMLButtonElement).style.textDecoration = "underline"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.textDecoration = "none"; }}
-            >
-              + Add item
-            </button>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <button
+                className="text-[12px] bg-transparent border-none cursor-pointer font-[inherit] px-1.5 py-1 transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                onClick={() => onAddTask(cat.id)}
+                type="button"
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; (e.currentTarget as HTMLButtonElement).style.textDecoration = "underline"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.textDecoration = "none"; }}
+              >
+                + Add item
+              </button>
+              {tasks.some((t) => t.done) && (
+                <button
+                  className="text-[12px] bg-transparent border-none cursor-pointer font-[inherit] px-1.5 py-1 transition-colors flex items-center gap-1"
+                  style={{ color: "var(--text-muted)" }}
+                  onClick={() => onClearCompleted(cat.id)}
+                  type="button"
+                  title="Remove all completed items from this category"
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--status-critical)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+                >
+                  <Trash2 size={11} /> Clear completed
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -573,6 +602,7 @@ export default function Dashboard() {
   const createTaskMut = trpc.tasks.create.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const updateTaskMut = trpc.tasks.update.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const deleteTaskMut = trpc.tasks.delete.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
+  const clearCompletedMut = trpc.tasks.clearCompleted.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const reorderCatMut = trpc.categories.reorder.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -638,6 +668,25 @@ export default function Dashboard() {
       },
     });
   }, [deleteTaskMut, createTaskMut, tasksData]);
+
+  const handleClearCompleted = useCallback((catId: number) => {
+    const doneTasks = tasksData.filter((t) => t.categoryId === catId && t.done);
+    if (doneTasks.length === 0) return;
+    clearCompletedMut.mutate({ categoryId: catId });
+    toast(`Removed ${doneTasks.length} completed item${doneTasks.length !== 1 ? "s" : ""} from this category`, {
+      duration: 6000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          // Re-create each deleted task at its original position
+          for (const t of doneTasks) {
+            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder });
+          }
+          toast.success(`${doneTasks.length} item${doneTasks.length !== 1 ? "s" : ""} restored.`);
+        },
+      },
+    });
+  }, [clearCompletedMut, createTaskMut, tasksData]);
 
   const handleAddTask = useCallback((catId: number, parentId?: number) => {
     const siblings = tasksData.filter((t) => t.categoryId === catId && (t.parentId ?? null) === (parentId ?? null));
@@ -903,6 +952,7 @@ export default function Dashboard() {
                     onAddTask={handleAddTask}
                     onDragStart={setDraggingTaskId}
                     onDrop={handleDrop}
+                    onClearCompleted={handleClearCompleted}
                   />
                   {/* Drop line after each category */}
                   <CatDropLine insertBefore={idx + 1} onCatDrop={handleCatDrop} />

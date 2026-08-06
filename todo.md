@@ -61,3 +61,8 @@
 - [x] Drag category cards up/down to reorder them
 - [x] Show drop-line between category cards while dragging
 - [x] Persist new sortOrder for all affected categories on drop
+
+## Clear Completed
+- [x] Add "Clear completed" button per category (only visible when ≥1 done item exists)
+- [x] Clicking it deletes all done tasks in that category (including done sub-items)
+- [x] Show undo toast with count of removed items

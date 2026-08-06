@@ -124,6 +124,14 @@ describe("tasks router", () => {
     const result = await caller.tasks.reorder([{ id: 1, sortOrder: 0, parentId: 2, categoryId: 1 }]);
     expect(result.success).toBe(true);
   });
+
+  it("clears completed tasks in a category", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.tasks.clearCompleted({ categoryId: 1 });
+    expect(result.success).toBe(true);
+    // No done tasks in mock data, so deleted count is 0
+    expect(result.deleted).toBe(0);
+  });
 });
 
 describe("data router", () => {
