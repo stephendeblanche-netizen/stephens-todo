@@ -71,3 +71,8 @@
 - [x] Auto-focus and select-all text when a new item is created so typing replaces "New item"
 - [x] Pressing Enter commits the text and locks in the content
 - [x] Clicking away (blur) also commits the text
+
+## iOS Drag-and-Drop Fix
+- [x] Replace HTML5 drag events with pointer-events-based drag (works on iOS Safari/iPad)
+- [x] Task reordering via touch drag on iOS
+- [x] Category reordering via touch drag on iOS

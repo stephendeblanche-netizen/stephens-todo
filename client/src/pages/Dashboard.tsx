@@ -16,6 +16,26 @@ import {
   StickyNote,
   X,
 } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 
 // ---- Color helpers ----
 const SLOT_COLORS = [
@@ -49,61 +69,14 @@ function countNodes(nodes: TaskNode[]): { total: number; done: number } {
   return { total, done };
 }
 
-// ---- Drag context (module-level ref to avoid prop drilling) ----
-// We store the dragging task id in a module-level variable so all drop targets
-// can read it without needing to pass it through every component.
-let _draggingId: number | null = null;
-// Module-level variable for category drag (separate from task drag)
-let _draggingCatId: number | null = null;
-
-// ---- Drop zone types ----
-// "before" = insert before this task (same parent/category)
-// "after"  = insert after this task (same parent/category)
-// "child"  = nest as first child of this task
-// "cat"    = drop as last top-level item in a category
-type DropZoneType = "before" | "after" | "child" | "cat";
-
-interface DropTarget {
-  type: DropZoneType;
-  taskId?: number;   // for before/after/child
-  catId: number;
-  parentId: number | null; // the new parentId after drop
-  sortOrder: number;       // the new sortOrder after drop
-}
-
-// ---- DropLine — thin horizontal line between items ----
-interface DropLineProps {
-  catId: number;
-  parentId: number | null;
-  sortOrder: number;
-  onDrop: (target: DropTarget) => void;
-}
-function DropLine({ catId, parentId, sortOrder, onDrop }: DropLineProps) {
-  const [active, setActive] = useState(false);
-  return (
-    <li
-      className="list-none"
-      style={{ height: active ? "6px" : "3px", margin: "1px 0", transition: "height 0.1s" }}
-      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setActive(true); }}
-      onDragLeave={() => setActive(false)}
-      onDrop={(e) => {
-        e.preventDefault(); e.stopPropagation();
-        setActive(false);
-        if (_draggingId === null) return;
-        onDrop({ type: "before", catId, parentId, sortOrder });
-      }}
-    >
-      <div
-        style={{
-          height: "2px",
-          borderRadius: "2px",
-          background: active ? "var(--slot-1)" : "transparent",
-          transition: "background 0.1s",
-          margin: "0 8px",
-        }}
-      />
-    </li>
-  );
+// ---- Drag ID helpers ----
+// We prefix IDs so we can tell tasks from categories in drag events
+function taskDragId(id: number) { return `task-${id}`; }
+function catDragId(id: number) { return `cat-${id}`; }
+function parseDragId(id: string): { type: "task" | "cat"; id: number } | null {
+  if (id.startsWith("task-")) return { type: "task", id: parseInt(id.slice(5)) };
+  if (id.startsWith("cat-")) return { type: "cat", id: parseInt(id.slice(4)) };
+  return null;
 }
 
 // ---- TaskItem ----
@@ -113,30 +86,44 @@ interface TaskItemProps {
   depth: number;
   query: string;
   showCompleted: boolean;
-  siblingCount: number;
-  siblingIndex: number;
+  allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
   onAddChild: (parentId: number, categoryId: number) => void;
-  onDragStart: (id: number) => void;
-  onDrop: (target: DropTarget) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
+  isDragOverlay?: boolean;
 }
 
 function TaskItem({
-  node, categoryId, depth, query, showCompleted,
-  siblingCount, siblingIndex,
-  onUpdate, onDelete, onAddChild, onDragStart, onDrop,
+  node, categoryId, depth, query, showCompleted, allCatTasks,
+  onUpdate, onDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
+  isDragOverlay = false,
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
-  const [nestTarget, setNestTarget] = useState(false);
   const [hovered, setHovered] = useState(false);
   const textInputRef = useRef<HTMLInputElement>(null);
   const isNew = newTaskId === node.id;
 
-  // Auto-focus and select-all when this is the newly created task
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: taskDragId(node.id),
+    data: { type: "task", taskId: node.id, categoryId, parentId: node.parentId ?? null },
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  };
+
   useEffect(() => {
     if (isNew && textInputRef.current) {
       textInputRef.current.focus();
@@ -144,65 +131,36 @@ function TaskItem({
     }
   }, [isNew]);
 
-  if (node.done && !showCompleted) return null;
-  if (query && !matchesSearch(node, query)) return null;
+  if (node.done && !showCompleted && !isDragOverlay) return null;
+  if (query && !matchesSearch(node, query) && !isDragOverlay) return null;
 
   const hasChildren = node.children.length > 0;
-  const visibleChildren = node.children.filter(
-    (c) => (showCompleted || !c.done) && (!query || matchesSearch(c, query))
-  );
 
   return (
     <>
-      {/* Drop zone BEFORE this item */}
-      <DropLine
-        catId={categoryId}
-        parentId={node.parentId ?? null}
-        sortOrder={siblingIndex}
-        onDrop={onDrop}
-      />
-
-      <li className="list-none">
-        {/* Main row — nest-on-hover drop target */}
+      <li ref={setNodeRef} style={style} className="list-none">
         <div
-          className="flex items-start gap-1 px-1.5 py-1 rounded-md cursor-grab select-none transition-colors duration-100"
+          className="flex items-start gap-1 px-1.5 py-1 rounded-md select-none transition-colors duration-100"
           style={{
-            background: nestTarget
-              ? "var(--drop-wash)"
-              : hovered ? "var(--page-plane)" : "transparent",
-            outline: nestTarget ? "1px dashed var(--slot-1)" : "none",
+            background: hovered ? "var(--page-plane)" : "transparent",
           }}
-          draggable
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
-          onDragStart={(e) => { e.stopPropagation(); _draggingId = node.id; onDragStart(node.id); }}
-          onDragEnd={() => { _draggingId = null; }}
-          onDragOver={(e) => {
-            // Only activate nest-target if dragging over the centre of the row
-            // (not the top/bottom 30% which is handled by DropLines)
-            e.preventDefault(); e.stopPropagation();
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            const relY = e.clientY - rect.top;
-            const pct = relY / rect.height;
-            setNestTarget(pct > 0.3 && pct < 0.7);
-          }}
-          onDragLeave={(e) => { e.stopPropagation(); setNestTarget(false); }}
-          onDrop={(e) => {
-            e.preventDefault(); e.stopPropagation();
-            setNestTarget(false);
-            if (_draggingId === null || _draggingId === node.id) return;
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            const relY = e.clientY - rect.top;
-            const pct = relY / rect.height;
-            if (pct > 0.3 && pct < 0.7) {
-              // Nest as child
-              onDrop({ type: "child", taskId: node.id, catId: categoryId, parentId: node.id, sortOrder: node.children.length });
-            }
-            // top/bottom handled by DropLines
-          }}
+          data-task-item
         >
-          {/* Drag handle */}
-          <span className="mt-1 flex-shrink-0 cursor-grab" style={{ color: "var(--text-muted)", opacity: hovered ? 1 : 0, transition: "opacity 0.1s" }}>
+          {/* Drag handle — touch-action:none so pointer events work on iOS */}
+          <span
+            className="mt-1 flex-shrink-0"
+            style={{
+              color: "var(--text-muted)",
+              opacity: hovered || isDragOverlay ? 1 : 0,
+              transition: "opacity 0.1s",
+              touchAction: "none",
+              cursor: "grab",
+            }}
+            {...attributes}
+            {...listeners}
+          >
             <GripVertical size={12} />
           </span>
 
@@ -248,13 +206,8 @@ function TaskItem({
               if (isNew && onNewTaskCommitted) onNewTaskCommitted();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                (e.target as HTMLInputElement).blur();
-              } else if (e.key === "Escape") {
-                (e.target as HTMLInputElement).value = node.text;
-                (e.target as HTMLInputElement).blur();
-              }
+              if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+              else if (e.key === "Escape") { (e.target as HTMLInputElement).value = node.text; (e.target as HTMLInputElement).blur(); }
             }}
             onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
             onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
@@ -263,7 +216,7 @@ function TaskItem({
           />
 
           {/* Toolbar */}
-          <span className="flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
+          <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: node.note ? "var(--slot-1)" : "var(--text-muted)", background: "transparent", border: "none" }}
@@ -307,7 +260,7 @@ function TaskItem({
               id={`note-${node.id}`}
               className="w-full max-w-md text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
               style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-              placeholder="Add a note\u2026"
+              placeholder="Add a note…"
               defaultValue={node.note}
               onBlur={(e) => onUpdate(node.id, { note: e.target.value })}
               onClick={(e) => e.stopPropagation()}
@@ -337,45 +290,30 @@ function TaskItem({
         {/* Children */}
         {hasChildren && !node.collapsed && (
           <ul className="ml-5 pl-3 mt-0.5 list-none p-0" style={{ borderLeft: "1px solid var(--gridline)" }}>
-            {node.children.map((child, idx) => (
-              <TaskItem
-                key={child.id}
-                node={child}
-                categoryId={categoryId}
-                depth={depth + 1}
-                query={query}
-                showCompleted={showCompleted}
-                siblingCount={node.children.length}
-                siblingIndex={idx}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-                onAddChild={onAddChild}
-                onDragStart={onDragStart}
-                onDrop={onDrop}
-                newTaskId={newTaskId}
-                onNewTaskCommitted={onNewTaskCommitted}
-              />
-            ))}
-            {/* Drop zone after last child */}
-            <DropLine
-              catId={categoryId}
-              parentId={node.id}
-              sortOrder={node.children.length}
-              onDrop={onDrop}
-            />
+            <SortableContext
+              items={node.children.map((c) => taskDragId(c.id))}
+              strategy={verticalListSortingStrategy}
+            >
+              {node.children.map((child) => (
+                <TaskItem
+                  key={child.id}
+                  node={child}
+                  categoryId={categoryId}
+                  depth={depth + 1}
+                  query={query}
+                  showCompleted={showCompleted}
+                  allCatTasks={allCatTasks}
+                  onUpdate={onUpdate}
+                  onDelete={onDelete}
+                  onAddChild={onAddChild}
+                  newTaskId={newTaskId}
+                  onNewTaskCommitted={onNewTaskCommitted}
+                />
+              ))}
+            </SortableContext>
           </ul>
         )}
       </li>
-
-      {/* Drop zone AFTER last sibling */}
-      {siblingIndex === siblingCount - 1 && (
-        <DropLine
-          catId={categoryId}
-          parentId={node.parentId ?? null}
-          sortOrder={siblingCount}
-          onDrop={onDrop}
-        />
-      )}
     </>
   );
 }
@@ -391,116 +329,77 @@ interface CategoryCardProps {
   onUpdateTask: (id: number, data: Partial<Task>) => void;
   onDeleteTask: (id: number, text: string) => void;
   onAddTask: (catId: number, parentId?: number) => void;
-  onDragStart: (taskId: number) => void;
-  onDrop: (target: DropTarget) => void;
-}
-interface CategoryCardProps {
-  cat: Category;
-  tasks: Task[];
-  query: string;
-  showCompleted: boolean;
-  onUpdateCat: (id: number, data: Partial<Category>) => void;
-  onDeleteCat: (id: number, name: string) => void;
-  onUpdateTask: (id: number, data: Partial<Task>) => void;
-  onDeleteTask: (id: number, text: string) => void;
-  onAddTask: (catId: number, parentId?: number) => void;
-  onDragStart: (taskId: number) => void;
-  onDrop: (target: DropTarget) => void;
   onClearCompleted: (catId: number) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
 }
 
-// ---- CatDropLine — thin line between category cards ----
-interface CatDropLineProps {
-  insertBefore: number; // sortOrder position to insert at
-  onCatDrop: (insertBefore: number) => void;
-}
-function CatDropLine({ insertBefore, onCatDrop }: CatDropLineProps) {
-  const [active, setActive] = useState(false);
-  return (
-    <div
-      style={{ height: active ? "8px" : "4px", margin: "2px 0", transition: "height 0.1s", position: "relative" }}
-      onDragOver={(e) => {
-        // Only activate for category drags, not task drags
-        if (_draggingCatId === null) return;
-        e.preventDefault(); e.stopPropagation(); setActive(true);
-      }}
-      onDragLeave={() => setActive(false)}
-      onDrop={(e) => {
-        if (_draggingCatId === null) return;
-        e.preventDefault(); e.stopPropagation();
-        setActive(false);
-        onCatDrop(insertBefore);
-      }}
-    >
-      <div style={{
-        height: "2px", borderRadius: "2px", margin: "0 8px",
-        background: active ? "var(--slot-2)" : "transparent",
-        transition: "background 0.1s",
-      }} />
-    </div>
-  );
-}
-
 function CategoryCard({
   cat, tasks, query, showCompleted,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop, onClearCompleted,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
-  const [catDropTarget, setCatDropTarget] = useState(false);
-  const [isDraggingThis, setIsDraggingThis] = useState(false);
   const tree = useMemo(() => buildTree(tasks), [tasks]);
   const { total, done } = useMemo(() => countNodes(tree), [tree]);
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
   const color = catColor(cat);
 
+  const {
+    attributes: catAttributes,
+    listeners: catListeners,
+    setNodeRef: setCatRef,
+    transform: catTransform,
+    transition: catTransition,
+    isDragging: isCatDragging,
+  } = useSortable({
+    id: catDragId(cat.id),
+    data: { type: "cat", catId: cat.id },
+  });
+
+  const catStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(catTransform),
+    transition: catTransition,
+    opacity: isCatDragging ? 0.4 : 1,
+  };
+
   const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
   if (query && !hasMatchingItems) return null;
 
+  // Top-level tasks for this category (for sortable context)
+  const topLevelTasks = useMemo(
+    () => tasks.filter((t) => (t.parentId ?? null) === null).sort((a, b) => a.sortOrder - b.sortOrder),
+    [tasks]
+  );
+
   return (
     <div
-      className="rounded-2xl mb-3.5 overflow-hidden transition-colors duration-100"
+      ref={setCatRef}
       style={{
-        background: catDropTarget ? "var(--drop-wash)" : "var(--card-surface)",
+        ...catStyle,
+        background: "var(--card-surface)",
         border: cat.kind === "urgent" ? "1.5px solid var(--status-critical)" : "1px solid var(--border-color)",
       }}
-      draggable
-      onDragStart={(e) => {
-        // Only start category drag if the drag handle was clicked
-        // We use a data attribute set on the handle to gate this
-        const handle = (e.target as HTMLElement).closest("[data-cat-drag-handle]");
-        if (!handle) { e.preventDefault(); return; }
-        _draggingCatId = cat.id;
-        setIsDraggingThis(true);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      onDragEnd={() => { _draggingCatId = null; setIsDraggingThis(false); }}
-      onDragOver={(e) => { e.preventDefault(); setCatDropTarget(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCatDropTarget(false); }}
-      onDrop={(e) => {
-        setCatDropTarget(false);
-        // Only handle drops that land directly on the card (not on a task row or drop-line)
-        const target = e.target as HTMLElement;
-        if (target.closest("[data-task-item]") || target.closest("[data-drop-line]")) return;
-        e.preventDefault();
-        if (_draggingId === null) return;
-        const topLevel = tasks.filter((t) => (t.parentId ?? null) === null);
-        onDrop({ type: "cat", catId: cat.id, parentId: null, sortOrder: topLevel.length });
-      }}
+      className="rounded-2xl mb-3.5 overflow-hidden transition-colors duration-100"
       data-cat-id={cat.id}
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2.5 px-4 py-3 select-none">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          {/* Category drag handle */}
+          {/* Category drag handle — touch-action:none for iOS */}
           <span
-            data-cat-drag-handle
-            className="flex-shrink-0 cursor-grab"
-            style={{ color: "var(--text-muted)", opacity: 0.4, transition: "opacity 0.1s" }}
+            className="flex-shrink-0"
+            style={{
+              color: "var(--text-muted)",
+              opacity: 0.4,
+              transition: "opacity 0.1s",
+              touchAction: "none",
+              cursor: "grab",
+            }}
             title="Drag to reorder category"
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.4"; }}
+            {...catAttributes}
+            {...catListeners}
           >
             <GripVertical size={14} />
           </span>
@@ -554,30 +453,28 @@ function CategoryCard({
       {/* Body */}
       {!cat.collapsed && (
         <div className="px-4 pb-3.5">
-          <ul className="list-none m-0 p-0 min-h-[6px]" data-cat-body={cat.id}>
-            {/* Drop zone at very top of empty/non-empty list */}
-            {tree.length === 0 && (
-              <DropLine catId={cat.id} parentId={null} sortOrder={0} onDrop={onDrop} />
-            )}
-            {tree.map((node, idx) => (
-              <TaskItem
-                key={node.id}
-                node={node}
-                categoryId={cat.id}
-                depth={0}
-                query={query}
-                showCompleted={showCompleted}
-                siblingCount={tree.length}
-                siblingIndex={idx}
-                onUpdate={onUpdateTask}
-                onDelete={onDeleteTask}
-                onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
-                onDragStart={onDragStart}
-                onDrop={onDrop}
-                newTaskId={newTaskId}
-                onNewTaskCommitted={onNewTaskCommitted}
-              />
-            ))}
+          <ul className="list-none m-0 p-0 min-h-[6px]">
+            <SortableContext
+              items={topLevelTasks.map((t) => taskDragId(t.id))}
+              strategy={verticalListSortingStrategy}
+            >
+              {tree.map((node) => (
+                <TaskItem
+                  key={node.id}
+                  node={node}
+                  categoryId={cat.id}
+                  depth={0}
+                  query={query}
+                  showCompleted={showCompleted}
+                  allCatTasks={tasks}
+                  onUpdate={onUpdateTask}
+                  onDelete={onDeleteTask}
+                  onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
+                  newTaskId={newTaskId}
+                  onNewTaskCommitted={onNewTaskCommitted}
+                />
+              ))}
+            </SortableContext>
           </ul>
           {!query && (
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
@@ -624,7 +521,8 @@ export default function Dashboard() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeCats, setActiveCats] = useState<Set<number> | null>(null);
   const [newCatName, setNewCatName] = useState("");
-  const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
+  const [newTaskId, setNewTaskId] = useState<number | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
   const updateCatMut = trpc.categories.update.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -639,8 +537,8 @@ export default function Dashboard() {
   const deleteTaskMut = trpc.tasks.delete.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const clearCompletedMut = trpc.tasks.clearCompleted.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
-  const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const reorderCatMut = trpc.categories.reorder.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
+  const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const importMut = trpc.data.import.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
@@ -652,17 +550,14 @@ export default function Dashboard() {
   }, [activeCats, categoriesData]);
 
   const stats = useMemo(() => {
-    let total = 0, done = 0, urgent = 0;
-    for (const cat of categoriesData) {
-      const catTasks = tasksData.filter((t) => t.categoryId === cat.id);
-      const tree = buildTree(catTasks);
-      const counts = countNodes(tree);
-      total += counts.total; done += counts.done;
-      if (cat.kind === "urgent") urgent = counts.total;
-    }
-    return { total, done, urgent, categories: categoriesData.length };
+    const urgentCat = categoriesData.find((c) => c.kind === "urgent");
+    const urgentTasks = urgentCat ? tasksData.filter((t) => t.categoryId === urgentCat.id && !t.done) : [];
+    const total = tasksData.length;
+    const done = tasksData.filter((t) => t.done).length;
+    return { total, done, urgent: urgentTasks.length, categories: categoriesData.length };
   }, [categoriesData, tasksData]);
 
+  // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
     updateCatMut.mutate({ id, ...data });
   }, [updateCatMut]);
@@ -713,7 +608,6 @@ export default function Dashboard() {
       action: {
         label: "Undo",
         onClick: () => {
-          // Re-create each deleted task at its original position
           for (const t of doneTasks) {
             createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder });
           }
@@ -722,8 +616,6 @@ export default function Dashboard() {
       },
     });
   }, [clearCompletedMut, createTaskMut, tasksData]);
-
-  const [newTaskId, setNewTaskId] = useState<number | null>(null);
 
   const handleAddTask = useCallback((catId: number, parentId?: number) => {
     const siblings = tasksData.filter((t) => t.categoryId === catId && (t.parentId ?? null) === (parentId ?? null));
@@ -749,56 +641,7 @@ export default function Dashboard() {
     setNewCatName("");
   }, [newCatName, categoriesData, createCatMut]);
 
-  // ---- Category drop handler ----
-  const handleCatDrop = useCallback((insertBefore: number) => {
-    const id = _draggingCatId;
-    if (id === null) return;
-    _draggingCatId = null;
-
-    // Always work against the full sorted list (not just visible filtered cats)
-    // so the resulting sortOrder values are globally consistent.
-    const sorted = [...categoriesData].sort((a, b) => a.sortOrder - b.sortOrder);
-    const dragged = sorted.find((c) => c.id === id);
-    if (!dragged) return;
-
-    // The insertBefore index is relative to the visible (filtered) list.
-    // Map it back to the full list: find the category at that visible position.
-    const visible = sorted.filter((c) => effectiveActiveCats.has(c.id));
-    // The category that will be just after the drop point in the visible list
-    const afterCat = visible[insertBefore] ?? null;
-
-    // Remove dragged from full list, then insert just before afterCat (or at end)
-    const without = sorted.filter((c) => c.id !== id);
-    const insertIdx = afterCat ? without.findIndex((c) => c.id === afterCat.id) : without.length;
-    without.splice(insertIdx < 0 ? without.length : insertIdx, 0, dragged);
-
-    const updates = without.map((c, i) => ({ id: c.id, sortOrder: i }));
-    reorderCatMut.mutate(updates);
-  }, [categoriesData, effectiveActiveCats, reorderCatMut]);
-
-  // ---- Central task drop handler ----
-  const handleDrop = useCallback((target: DropTarget) => {
-    const id = _draggingId;
-    if (id === null) return;
-    if (id === target.taskId) return; // can't drop on itself
-
-    // Recalculate sortOrder among siblings at the destination to avoid gaps
-    const siblings = tasksData
-      .filter((t) => t.categoryId === target.catId && (t.parentId ?? null) === target.parentId && t.id !== id)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-
-    // Insert at the desired position and renumber
-    const updates: Array<{ id: number; sortOrder: number; parentId: number | null; categoryId: number }> = [];
-    siblings.splice(target.sortOrder, 0, { id, sortOrder: 0, categoryId: target.catId, parentId: target.parentId } as Task);
-    siblings.forEach((t, i) => {
-      updates.push({ id: t.id, sortOrder: i, parentId: target.parentId, categoryId: target.catId });
-    });
-
-    reorderTaskMut.mutate(updates);
-    _draggingId = null;
-    setDraggingTaskId(null);
-  }, [tasksData, reorderTaskMut]);
-
+  // ---- Export / Import ----
   const handleExport = useCallback(async () => {
     const result = await exportQuery.refetch();
     if (!result.data) return;
@@ -806,12 +649,8 @@ export default function Dashboard() {
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    const d = new Date();
-    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    a.download = `todo-dashboard-${stamp}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `stephen-todo-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
   }, [exportQuery]);
 
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -852,141 +691,224 @@ export default function Dashboard() {
     });
   }, [categoriesData]);
 
+  // ---- dnd-kit sensors — pointer + touch, with 8px activation distance ----
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeInfo = parseDragId(String(active.id));
+    const overInfo = parseDragId(String(over.id));
+    if (!activeInfo || !overInfo) return;
+
+    // ---- Category reorder ----
+    // Always work against the FULL sorted category list so hidden (filtered) categories
+    // keep their correct global sortOrder.
+    if (activeInfo.type === "cat" && overInfo.type === "cat") {
+      const allSorted = [...categoriesData].sort((a, b) => a.sortOrder - b.sortOrder);
+      const oldIdx = allSorted.findIndex((c) => c.id === activeInfo.id);
+      const newIdx = allSorted.findIndex((c) => c.id === overInfo.id);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reordered = arrayMove(allSorted, oldIdx, newIdx);
+      const updates = reordered.map((c, i) => ({ id: c.id, sortOrder: i }));
+      reorderCatMut.mutate(updates);
+      return;
+    }
+
+    // ---- Task reorder ----
+    // Always work against the FULL sibling list at the destination level (not just visible
+    // ones) so hidden completed/searched-out siblings keep their correct sortOrder.
+    if (activeInfo.type === "task" && overInfo.type === "task") {
+      const activeTask = tasksData.find((t) => t.id === activeInfo.id);
+      const overTask = tasksData.find((t) => t.id === overInfo.id);
+      if (!activeTask || !overTask) return;
+
+      const targetCatId = overTask.categoryId;
+      const targetParentId = overTask.parentId ?? null;
+
+      // Full sibling list at destination (all tasks, not just visible ones)
+      const allSiblings = tasksData
+        .filter((t) => t.categoryId === targetCatId && (t.parentId ?? null) === targetParentId && t.id !== activeTask.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+
+      // Insert active task at the position of the over task
+      const overIdx = allSiblings.findIndex((t) => t.id === overTask.id);
+      const insertIdx = overIdx === -1 ? allSiblings.length : overIdx;
+      allSiblings.splice(insertIdx, 0, { ...activeTask, categoryId: targetCatId, parentId: targetParentId });
+
+      const updates = allSiblings.map((t, i) => ({
+        id: t.id,
+        sortOrder: i,
+        parentId: targetParentId,
+        categoryId: targetCatId,
+      }));
+      reorderTaskMut.mutate(updates);
+    }
+  }, [categoriesData, tasksData, reorderCatMut, reorderTaskMut]);
+
+  // Find the active dragging item for the overlay
+  const activeDragTask = activeDragId
+    ? tasksData.find((t) => taskDragId(t.id) === activeDragId)
+    : null;
+  const activeDragCat = activeDragId
+    ? categoriesData.find((c) => catDragId(c.id) === activeDragId)
+    : null;
+
   const isLoading = catsLoading || tasksLoading;
+  const sortedCats = useMemo(
+    () => [...categoriesData].sort((a, b) => a.sortOrder - b.sortOrder),
+    [categoriesData]
+  );
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--page-plane)", color: "var(--text-primary)" }}>
-      <div className="max-w-[1000px] mx-auto px-5 py-6 pb-24">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="min-h-screen" style={{ background: "var(--page-plane)", color: "var(--text-primary)" }}>
+        <div className="max-w-[1000px] mx-auto px-5 py-6 pb-24">
 
-        {/* Top bar */}
-        <div className="flex justify-between items-start gap-4 flex-wrap mb-5">
-          <div>
-            <h1 className="text-[22px] font-bold m-0 mb-1" style={{ color: "var(--text-primary)" }}>
-              Stephen's To-Do Dashboard
-            </h1>
-            <p className="text-[13px] m-0" style={{ color: "var(--text-secondary)" }}>
-              {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-              style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-secondary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-color)"; }}
-              onClick={handleExport} type="button"
-            >
-              <FileDown size={13} /> Export snapshot
-            </button>
-            <label
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-              style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-            >
-              <FileUp size={13} /> Import snapshot
-              <input type="file" accept="application/json" className="hidden" onChange={handleImport} />
-            </label>
-            <button
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-              style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
-              onClick={toggleTheme} type="button"
-            >
-              {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </button>
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid gap-3 mb-5 stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-          {[
-            { label: "Total items", value: stats.total, urgent: false },
-            { label: "Urgent", value: stats.urgent, urgent: true },
-            { label: "Categories", value: stats.categories, urgent: false },
-            { label: "Completed", value: stats.done, urgent: false },
-          ].map(({ label, value, urgent }) => (
-            <div key={label} className="rounded-xl border px-4 py-3.5" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
-              <div className="text-[26px] font-bold leading-none" style={{ color: urgent ? "var(--status-critical)" : "var(--text-primary)" }}>{value}</div>
-              <div className="text-[12px] mt-1" style={{ color: "var(--text-secondary)" }}>{label}</div>
+          {/* Top bar */}
+          <div className="flex justify-between items-start gap-4 flex-wrap mb-5">
+            <div>
+              <h1 className="text-[22px] font-bold m-0 mb-1" style={{ color: "var(--text-primary)" }}>
+                Stephen's To-Do Dashboard
+              </h1>
+              <p className="text-[13px] m-0" style={{ color: "var(--text-secondary)" }}>
+                {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+              </p>
             </div>
-          ))}
-        </div>
+            <div className="flex gap-2 flex-wrap items-center">
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-secondary)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-color)"; }}
+                onClick={handleExport} type="button"
+              >
+                <FileDown size={13} /> Export snapshot
+              </button>
+              <label
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
+              >
+                <FileUp size={13} /> Import snapshot
+                <input type="file" accept="application/json" className="hidden" onChange={handleImport} />
+              </label>
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+                onClick={toggleTheme} type="button"
+              >
+                {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+                {theme === "dark" ? "Light mode" : "Dark mode"}
+              </button>
+            </div>
+          </div>
 
-        {/* Controls */}
-        <div className="flex gap-2.5 flex-wrap mb-3.5 items-center">
-          <div className="flex-1 min-w-[200px] relative">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+          {/* Stats row */}
+          <div className="grid gap-3 mb-5 stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+            {[
+              { label: "Total items", value: stats.total, urgent: false },
+              { label: "Urgent", value: stats.urgent, urgent: true },
+              { label: "Categories", value: stats.categories, urgent: false },
+              { label: "Completed", value: stats.done, urgent: false },
+            ].map(({ label, value, urgent }) => (
+              <div key={label} className="rounded-xl border px-4 py-3.5" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+                <div className="text-[26px] font-bold leading-none" style={{ color: urgent ? "var(--status-critical)" : "var(--text-primary)" }}>{value}</div>
+                <div className="text-[12px] mt-1" style={{ color: "var(--text-secondary)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div className="flex gap-2.5 flex-wrap mb-3.5 items-center">
+            <div className="flex-1 min-w-[200px] relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+              <input
+                className="w-full pl-8 pr-3 py-2 rounded-lg border text-[13px] font-[inherit]"
+                style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
+                placeholder="Search to-do items…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={(e) => { e.target.style.outline = "1px solid var(--slot-1)"; }}
+                onBlur={(e) => { e.target.style.outline = "none"; }}
+              />
+            </div>
+            <button
+              className="px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
+              style={{ background: "var(--card-surface)", color: showCompleted ? "var(--text-primary)" : "var(--text-secondary)", borderColor: showCompleted ? "var(--text-primary)" : "var(--border-color)" }}
+              onClick={() => setShowCompleted((v) => !v)} type="button"
+            >
+              {showCompleted ? "Hide completed" : "Show completed"}
+            </button>
+          </div>
+
+          {/* Add category */}
+          <div className="flex gap-2 mb-4 items-center">
             <input
-              className="w-full pl-8 pr-3 py-2 rounded-lg border text-[13px] font-[inherit]"
-              style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
-              placeholder="Search to-do items…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              className="flex-1 max-w-xs px-3 py-1.5 rounded-lg border text-[13px] font-[inherit]"
+              style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
+              placeholder="New category name…"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }}
               onFocus={(e) => { e.target.style.outline = "1px solid var(--slot-1)"; }}
               onBlur={(e) => { e.target.style.outline = "none"; }}
             />
+            <button
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+              style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
+              onClick={handleAddCategory} type="button"
+            >
+              <Plus size={12} /> Add category
+            </button>
           </div>
-          <button
-            className="px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
-            style={{ background: "var(--card-surface)", color: showCompleted ? "var(--text-primary)" : "var(--text-secondary)", borderColor: showCompleted ? "var(--text-primary)" : "var(--border-color)" }}
-            onClick={() => setShowCompleted((v) => !v)} type="button"
-          >
-            {showCompleted ? "Hide completed" : "Show completed"}
-          </button>
-        </div>
 
-        {/* Add category */}
-        <div className="flex gap-2 mb-4 items-center">
-          <input
-            className="flex-1 max-w-xs px-3 py-1.5 rounded-lg border text-[13px] font-[inherit]"
-            style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
-            placeholder="New category name…"
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }}
-            onFocus={(e) => { e.target.style.outline = "1px solid var(--slot-1)"; }}
-            onBlur={(e) => { e.target.style.outline = "none"; }}
-          />
-          <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-            style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-            onClick={handleAddCategory} type="button"
-          >
-            <Plus size={12} /> Add category
-          </button>
-        </div>
+          {/* Category filter chips */}
+          <div className="flex gap-2 flex-wrap mb-4 items-center">
+            {categoriesData.map((cat) => {
+              const isActive = effectiveActiveCats.has(cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                  style={{ background: "var(--card-surface)", color: isActive ? "var(--text-primary)" : "var(--text-secondary)", borderColor: isActive ? "var(--text-primary)" : "var(--border-color)" }}
+                  onClick={() => toggleCat(cat.id)} type="button"
+                >
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(cat) }} />
+                  {cat.name}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Category filter chips */}
-        <div className="flex gap-2 flex-wrap mb-4 items-center">
-          {categoriesData.map((cat) => {
-            const isActive = effectiveActiveCats.has(cat.id);
-            return (
-              <button
-                key={cat.id}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-[12px] cursor-pointer font-[inherit] transition-colors"
-                style={{ background: "var(--card-surface)", color: isActive ? "var(--text-primary)" : "var(--text-secondary)", borderColor: isActive ? "var(--text-primary)" : "var(--border-color)" }}
-                onClick={() => toggleCat(cat.id)} type="button"
-              >
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: catColor(cat) }} />
-                {cat.name}
-              </button>
-            );
-          })}
-        </div>
+          {isLoading && (
+            <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>Loading your tasks…</div>
+          )}
 
-        {isLoading && (
-          <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>Loading your tasks…</div>
-        )}
-
-        {!isLoading && (
-          <div>
-            {/* Drop line before first category */}
-            <CatDropLine insertBefore={0} onCatDrop={handleCatDrop} />
-            {categoriesData
-              .filter((cat) => effectiveActiveCats.has(cat.id))
-              .sort((a, b) => a.sortOrder - b.sortOrder)
-              .map((cat, idx, arr) => (
-                <div key={cat.id}>
+          {!isLoading && (
+            <SortableContext
+              items={sortedCats.filter((c) => effectiveActiveCats.has(c.id)).map((c) => catDragId(c.id))}
+              strategy={verticalListSortingStrategy}
+            >
+              {sortedCats
+                .filter((cat) => effectiveActiveCats.has(cat.id))
+                .map((cat) => (
                   <CategoryCard
+                    key={cat.id}
                     cat={cat}
                     tasks={tasksData.filter((t) => t.categoryId === cat.id)}
                     query={query.toLowerCase()}
@@ -996,33 +918,49 @@ export default function Dashboard() {
                     onUpdateTask={handleUpdateTask}
                     onDeleteTask={handleDeleteTask}
                     onAddTask={handleAddTask}
-                    onDragStart={setDraggingTaskId}
-                    onDrop={handleDrop}
                     onClearCompleted={handleClearCompleted}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={() => setNewTaskId(null)}
                   />
-                  {/* Drop line after each category */}
-                  <CatDropLine insertBefore={idx + 1} onCatDrop={handleCatDrop} />
+                ))}
+              {sortedCats.filter((c) => effectiveActiveCats.has(c.id)).length === 0 && (
+                <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                  {query ? "No items match your search." : "No categories yet — add one above."}
                 </div>
-              ))}
-            {categoriesData.filter((c) => effectiveActiveCats.has(c.id)).length === 0 && (
-              <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                {query ? "No items match your search." : "No categories yet — add one above."}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </SortableContext>
+          )}
 
-        <footer className="text-center text-[11.5px] mt-6" style={{ color: "var(--text-muted)" }}>
-          Stephen's To-Do Dashboard · Data saved server-side · accessible from any device
-        </footer>
+          <footer className="text-center text-[11.5px] mt-6" style={{ color: "var(--text-muted)" }}>
+            Stephen's To-Do Dashboard · Data saved server-side · accessible from any device
+          </footer>
+        </div>
+
+        {/* Drag overlay — shown while dragging on all platforms */}
+        <DragOverlay>
+          {activeDragTask && (
+            <div
+              className="rounded-md px-2 py-1.5 text-[13.5px] shadow-lg"
+              style={{ background: "var(--card-surface)", border: "1px solid var(--border-color)", opacity: 0.9, maxWidth: "400px" }}
+            >
+              {activeDragTask.text}
+            </div>
+          )}
+          {activeDragCat && (
+            <div
+              className="rounded-xl px-4 py-3 text-[14.5px] font-semibold shadow-xl"
+              style={{ background: "var(--card-surface)", border: "1px solid var(--border-color)", opacity: 0.9, maxWidth: "600px" }}
+            >
+              {activeDragCat.name}
+            </div>
+          )}
+        </DragOverlay>
+
+        <style>{`
+          @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+          @media (hover: none) { .task-toolbar { opacity: 1 !important; } }
+        `}</style>
       </div>
-
-      <style>{`
-        @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr) !important; } }
-        @media (hover: none) { .task-toolbar { opacity: 1 !important; } }
-      `}</style>
-    </div>
+    </DndContext>
   );
 }
