@@ -66,3 +66,8 @@
 - [x] Add "Clear completed" button per category (only visible when ≥1 done item exists)
 - [x] Clicking it deletes all done tasks in that category (including done sub-items)
 - [x] Show undo toast with count of removed items
+
+## New Item UX
+- [x] Auto-focus and select-all text when a new item is created so typing replaces "New item"
+- [x] Pressing Enter commits the text and locks in the content
+- [x] Clicking away (blur) also commits the text

@@ -1,7 +1,7 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 import type { Category, Task } from "../../../drizzle/schema";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ChevronDown,
@@ -120,16 +120,29 @@ interface TaskItemProps {
   onAddChild: (parentId: number, categoryId: number) => void;
   onDragStart: (id: number) => void;
   onDrop: (target: DropTarget) => void;
+  newTaskId?: number | null;
+  onNewTaskCommitted?: () => void;
 }
 
 function TaskItem({
   node, categoryId, depth, query, showCompleted,
   siblingCount, siblingIndex,
   onUpdate, onDelete, onAddChild, onDragStart, onDrop,
+  newTaskId, onNewTaskCommitted,
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [nestTarget, setNestTarget] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const textInputRef = useRef<HTMLInputElement>(null);
+  const isNew = newTaskId === node.id;
+
+  // Auto-focus and select-all when this is the newly created task
+  useEffect(() => {
+    if (isNew && textInputRef.current) {
+      textInputRef.current.focus();
+      textInputRef.current.select();
+    }
+  }, [isNew]);
 
   if (node.done && !showCompleted) return null;
   if (query && !matchesSearch(node, query)) return null;
@@ -219,6 +232,7 @@ function TaskItem({
 
           {/* Text */}
           <input
+            ref={textInputRef}
             className="flex-1 min-w-0 border-none bg-transparent px-1 py-0.5 rounded text-[13.5px] leading-relaxed font-[inherit]"
             style={{
               outline: "none",
@@ -227,7 +241,21 @@ function TaskItem({
               fontWeight: hasChildren ? 600 : 400,
             }}
             defaultValue={node.text}
-            onBlur={(e) => { if (e.target.value !== node.text) onUpdate(node.id, { text: e.target.value }); }}
+            onBlur={(e) => {
+              const val = e.target.value.trim() || node.text;
+              e.target.value = val;
+              if (val !== node.text) onUpdate(node.id, { text: val });
+              if (isNew && onNewTaskCommitted) onNewTaskCommitted();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                (e.target as HTMLInputElement).value = node.text;
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
             onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
             onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
             onMouseDown={(e) => e.stopPropagation()}
@@ -324,6 +352,8 @@ function TaskItem({
                 onAddChild={onAddChild}
                 onDragStart={onDragStart}
                 onDrop={onDrop}
+                newTaskId={newTaskId}
+                onNewTaskCommitted={onNewTaskCommitted}
               />
             ))}
             {/* Drop zone after last child */}
@@ -377,6 +407,8 @@ interface CategoryCardProps {
   onDragStart: (taskId: number) => void;
   onDrop: (target: DropTarget) => void;
   onClearCompleted: (catId: number) => void;
+  newTaskId?: number | null;
+  onNewTaskCommitted?: () => void;
 }
 
 // ---- CatDropLine — thin line between category cards ----
@@ -414,6 +446,7 @@ function CatDropLine({ insertBefore, onCatDrop }: CatDropLineProps) {
 function CategoryCard({
   cat, tasks, query, showCompleted,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onDragStart, onDrop, onClearCompleted,
+  newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
   const [catDropTarget, setCatDropTarget] = useState(false);
   const [isDraggingThis, setIsDraggingThis] = useState(false);
@@ -541,6 +574,8 @@ function CategoryCard({
                 onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
                 onDragStart={onDragStart}
                 onDrop={onDrop}
+                newTaskId={newTaskId}
+                onNewTaskCommitted={onNewTaskCommitted}
               />
             ))}
           </ul>
@@ -688,10 +723,21 @@ export default function Dashboard() {
     });
   }, [clearCompletedMut, createTaskMut, tasksData]);
 
+  const [newTaskId, setNewTaskId] = useState<number | null>(null);
+
   const handleAddTask = useCallback((catId: number, parentId?: number) => {
     const siblings = tasksData.filter((t) => t.categoryId === catId && (t.parentId ?? null) === (parentId ?? null));
-    createTaskMut.mutate({ categoryId: catId, parentId, text: "New item", sortOrder: siblings.length });
-  }, [createTaskMut, tasksData]);
+    createTaskMut.mutate(
+      { categoryId: catId, parentId, text: "New item", sortOrder: siblings.length },
+      {
+        onSuccess: (data) => {
+          utils.tasks.listAll.invalidate().then(() => {
+            setNewTaskId(data.id);
+          });
+        },
+      }
+    );
+  }, [createTaskMut, tasksData, utils]);
 
   const handleAddCategory = useCallback(() => {
     const name = newCatName.trim();
@@ -953,6 +999,8 @@ export default function Dashboard() {
                     onDragStart={setDraggingTaskId}
                     onDrop={handleDrop}
                     onClearCompleted={handleClearCompleted}
+                    newTaskId={newTaskId}
+                    onNewTaskCommitted={() => setNewTaskId(null)}
                   />
                   {/* Drop line after each category */}
                   <CatDropLine insertBefore={idx + 1} onCatDrop={handleCatDrop} />
