@@ -362,14 +362,13 @@ function CategoryCard({
     opacity: isCatDragging ? 0.4 : 1,
   };
 
-  const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
-  if (query && !hasMatchingItems) return null;
-
-  // Top-level tasks for this category (for sortable context)
+  // Top-level tasks for this category (for sortable context) — must be before early return
   const topLevelTasks = useMemo(
     () => tasks.filter((t) => (t.parentId ?? null) === null).sort((a, b) => a.sortOrder - b.sortOrder),
     [tasks]
   );
+  const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
+  if (query && !hasMatchingItems) return null;
 
   return (
     <div
