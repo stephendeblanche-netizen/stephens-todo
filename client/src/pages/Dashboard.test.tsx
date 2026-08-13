@@ -19,7 +19,12 @@ const fixture = vi.hoisted(() => ({
   filters: [
     { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
   ],
+  directReports: [
+    { id: 1, name: "Alex Morgan", sortOrder: 0 },
+  ],
   updateFilterMutate: vi.fn(),
+  taskUpdateMutate: vi.fn(),
+  createDirectReportMutate: vi.fn(),
 }));
 
 vi.mock("@/lib/trpc", () => ({
@@ -28,6 +33,7 @@ vi.mock("@/lib/trpc", () => ({
       categories: { list: { invalidate: vi.fn() } },
       tasks: { listAll: { invalidate: vi.fn() } },
       filters: { list: { invalidate: vi.fn() } },
+      directReports: { list: { invalidate: vi.fn() } },
     }),
     categories: {
       list: { useQuery: () => ({ data: fixture.categories, isLoading: false }) },
@@ -35,12 +41,18 @@ vi.mock("@/lib/trpc", () => ({
     },
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
-      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: vi.fn() }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: vi.fn() }) },
+      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: vi.fn() }) },
     },
     filters: {
       list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
       create: { useMutation: () => ({ mutate: vi.fn() }) },
       update: { useMutation: () => ({ mutate: fixture.updateFilterMutate }) },
+      delete: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
+    directReports: {
+      list: { useQuery: () => ({ data: fixture.directReports, isLoading: false }) },
+      create: { useMutation: () => ({ mutate: fixture.createDirectReportMutate }) },
+      update: { useMutation: () => ({ mutate: vi.fn() }) },
       delete: { useMutation: () => ({ mutate: vi.fn() }) },
     },
     data: {
@@ -59,6 +71,8 @@ describe("Dashboard focused priority views", () => {
   beforeEach(() => {
     window.localStorage.clear();
     fixture.updateFilterMutate.mockReset();
+    fixture.taskUpdateMutate.mockReset();
+    fixture.createDirectReportMutate.mockReset();
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
     ];
@@ -149,5 +163,25 @@ describe("Dashboard focused priority views", () => {
     expect(refreshed).not.toBeNull();
     await user.click(refreshed);
     expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
+  });
+
+  it("offers N/A and Direct Reports for task accountability and saves the selection", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    const accountable = screen.getAllByRole("combobox", { name: "Accountable Direct Report for Urgent high today" })[0] as HTMLSelectElement;
+    expect(Array.from(accountable.options).map((option) => option.text)).toEqual(["N/A", "Alex Morgan"]);
+    await user.selectOptions(accountable, "1");
+    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, accountableDirectReportId: 1 });
+  });
+
+  it("adds a Direct Report from the management section", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.type(screen.getByRole("textbox", { name: "New Direct Report name" }), "Priya Shah");
+    await user.click(screen.getByRole("button", { name: "Add Direct Report" }));
+    expect(fixture.createDirectReportMutate).toHaveBeenCalledWith(
+      { name: "Priya Shah", sortOrder: 1 },
+      expect.any(Object),
+    );
   });
 });

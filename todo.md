@@ -129,3 +129,11 @@
 - [x] Test saved-filter update behavior
 - [x] Test submitted saved-filter edits and refreshed rendered filter data
 - [x] Test refreshed saved-filter list data after an edited filter is updated
+
+## Direct Reports & Accountability
+- [x] Add persistent Direct Reports storage and a nullable accountable direct-report field on tasks
+- [x] Add server APIs for Direct Report CRUD and task accountability assignment
+- [x] Add an N/A option and Direct Report dropdown to all task editing surfaces
+- [x] Build a Direct Reports management section with add, rename, and delete actions
+- [x] Preserve task accountability in snapshots, undo, and imports
+- [x] Test Direct Report management and task assignment behavior

@@ -16,6 +16,10 @@ import {
   deleteSavedFilter,
   getAllSavedFilters,
   updateSavedFilter,
+  getAllDirectReports,
+  createDirectReport,
+  updateDirectReport,
+  deleteDirectReport,
   replaceAllData,
 } from "./db";
 import { cascadeCategoryId, getDescendantIds } from "./db";
@@ -121,6 +125,27 @@ export const appRouter = router({
       }),
   }),
 
+  // ---- Direct Reports ----
+  directReports: router({
+    list: publicProcedure.query(async () => getAllDirectReports()),
+    create: publicProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(120), sortOrder: z.number().int().default(0) }))
+      .mutation(async ({ input }) => ({ id: await createDirectReport(input) })),
+    update: publicProcedure
+      .input(z.object({ id: z.number().int(), name: z.string().trim().min(1).max(120).optional(), sortOrder: z.number().int().optional() }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateDirectReport(id, data);
+        return { success: true };
+      }),
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await deleteDirectReport(input.id);
+        return { success: true };
+      }),
+  }),
+
   // ---- Tasks ----
   tasks: router({
     listAll: publicProcedure.query(async () => {
@@ -136,6 +161,7 @@ export const appRouter = router({
         dueAt: z.number().int().nullable().optional(),
         priority: z.enum(["high", "medium", "low"]).optional(),
         recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+        accountableDirectReportId: z.number().int().nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const id = await createTask(input);
@@ -150,6 +176,7 @@ export const appRouter = router({
         dueAt: z.number().int().nullable().optional(),
         priority: z.enum(["high", "medium", "low"]).optional(),
         recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+        accountableDirectReportId: z.number().int().nullable().optional(),
         done: z.boolean().optional(),
         collapsed: z.boolean().optional(),
         sortOrder: z.number().int().optional(),
@@ -263,7 +290,8 @@ export const appRouter = router({
       const cats = await getAllCategories();
       const allTasks = await getAllTasks();
       const filters = await getAllSavedFilters();
-      return { categories: cats, tasks: allTasks, filters, exportedAt: new Date().toISOString() };
+      const reports = await getAllDirectReports();
+      return { categories: cats, tasks: allTasks, filters, directReports: reports, exportedAt: new Date().toISOString() };
     }),
 
     import: publicProcedure
@@ -284,6 +312,7 @@ export const appRouter = router({
           dueAt: z.number().int().nullable().optional().default(null),
           priority: z.enum(["high", "medium", "low"]).optional().default("medium"),
           recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional().default("none"),
+          accountableDirectReportIndex: z.number().int().nullable().optional().default(null),
           done: z.boolean(),
           collapsed: z.boolean(),
           sortOrder: z.number().int(),
@@ -296,9 +325,13 @@ export const appRouter = router({
           includeCompleted: z.boolean(),
           sortOrder: z.number().int(),
         })).optional(),
+        directReports: z.array(z.object({
+          name: z.string().min(1).max(120),
+          sortOrder: z.number().int(),
+        })).optional(),
       }))
       .mutation(async ({ input }) => {
-        await replaceAllData(input.categories, input.tasks, input.filters);
+        await replaceAllData(input.categories, input.tasks, input.filters, input.directReports);
         return { success: true };
       }),
   }),

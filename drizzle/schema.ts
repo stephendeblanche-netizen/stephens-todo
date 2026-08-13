@@ -47,6 +47,18 @@ export const savedFilters = mysqlTable("saved_filters", {
 export type SavedFilter = typeof savedFilters.$inferSelect;
 export type InsertSavedFilter = typeof savedFilters.$inferInsert;
 
+// People who can be accountable for tasks. A null task reference represents N/A.
+export const directReports = mysqlTable("direct_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DirectReport = typeof directReports.$inferSelect;
+export type InsertDirectReport = typeof directReports.$inferInsert;
+
 // Tasks table — supports unlimited nesting via parentId self-reference
 export const tasks = mysqlTable("tasks", {
   id: int("id").autoincrement().primaryKey(),
@@ -58,6 +70,8 @@ export const tasks = mysqlTable("tasks", {
   dueAt: bigint("dueAt", { mode: "number" }),
   /** Independent task importance; distinct from membership of the URGENT category. */
   priority: mysqlEnum("priority", ["high", "medium", "low"]).default("medium").notNull(),
+  /** Null represents N/A (no direct-report accountability assigned). */
+  accountableDirectReportId: int("accountableDirectReportId"),
   /** When completed, recurring tasks are advanced to their next due date instead of archived. */
   recurrence: mysqlEnum("recurrence", ["none", "daily", "weekly", "monthly"]).default("none").notNull(),
   done: boolean("done").default(false).notNull(),

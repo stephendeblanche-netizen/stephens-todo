@@ -27,6 +27,12 @@ vi.mock("./db", () => ({
   createSavedFilter: vi.fn().mockResolvedValue(2),
   updateSavedFilter: vi.fn().mockResolvedValue(undefined),
   deleteSavedFilter: vi.fn().mockResolvedValue(undefined),
+  getAllDirectReports: vi.fn().mockResolvedValue([
+    { id: 1, name: "Alex Morgan", sortOrder: 0 },
+  ]),
+  createDirectReport: vi.fn().mockResolvedValue(2),
+  updateDirectReport: vi.fn().mockResolvedValue(undefined),
+  deleteDirectReport: vi.fn().mockResolvedValue(undefined),
   cascadeCategoryId: vi.fn().mockResolvedValue(undefined),
   getDescendantIds: vi.fn().mockResolvedValue([]),
   getDb: vi.fn().mockResolvedValue(null),
@@ -108,6 +114,21 @@ describe("saved filters router", () => {
       sortOrder: 0,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("direct reports router", () => {
+  it("lists, creates, updates, and deletes Direct Reports", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const listed = await caller.directReports.list();
+    const created = await caller.directReports.create({ name: "Priya Shah", sortOrder: 1 });
+    const updated = await caller.directReports.update({ id: created.id, name: "Priya S." });
+    const deleted = await caller.directReports.delete({ id: created.id });
+
+    expect(listed[0]?.name).toBe("Alex Morgan");
+    expect(created.id).toBe(2);
+    expect(updated.success).toBe(true);
+    expect(deleted.success).toBe(true);
   });
 });
 
@@ -197,6 +218,7 @@ describe("data router", () => {
     const result = await caller.data.export();
     expect(result.categories).toHaveLength(2);
     expect(result.tasks).toHaveLength(2);
+    expect(result.directReports[0]?.name).toBe("Alex Morgan");
     expect(result.exportedAt).toBeDefined();
   });
 
@@ -205,6 +227,7 @@ describe("data router", () => {
     const result = await caller.data.import({
       categories: [{ name: "URGENT", kind: "urgent", colorIndex: 0, sortOrder: 0, collapsed: false }],
       tasks: [],
+      directReports: [{ name: "Alex Morgan", sortOrder: 0 }],
     });
     expect(result.success).toBe(true);
   });

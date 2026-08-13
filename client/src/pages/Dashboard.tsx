@@ -19,7 +19,7 @@ import {
 } from "@/lib/today";
 import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } from "@/lib/calendar";
 import { applySavedFilter, matchesDueRange, type DueRange } from "@/lib/savedFilters";
-import type { Category, SavedFilter, Task } from "../../../drizzle/schema";
+import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -140,6 +140,7 @@ interface TaskItemProps {
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
   dueRange: DueRange;
+  directReports: DirectReport[];
   allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
@@ -151,7 +152,7 @@ interface TaskItemProps {
 }
 
 function TaskItem({
-  node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, allCatTasks,
+  node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReports, allCatTasks,
   onUpdate, onDelete, onSwipeDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
@@ -369,6 +370,17 @@ function TaskItem({
           >
             <Flag size={9} fill="currentColor" /> {priorityMeta(node.priority).label}
           </span>
+          <select
+            value={node.accountableDirectReportId ?? "na"}
+            onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="mt-0.5 max-w-[112px] shrink rounded border px-1 py-0.5 text-[10px] font-[inherit]"
+            style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+            aria-label={`Accountable Direct Report for ${node.text}`}
+          >
+            <option value="na">N/A</option>
+            {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
+          </select>
 
           {/* Toolbar */}
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
@@ -543,6 +555,7 @@ function TaskItem({
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
                   dueRange={dueRange}
+                  directReports={directReports}
                   allCatTasks={allCatTasks}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
@@ -564,11 +577,12 @@ function TaskItem({
 interface TodayTaskRowProps {
   task: Task;
   category?: Category;
+  directReports: DirectReport[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
 }
 
-function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps) {
+function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: TodayTaskRowProps) {
   const dueToday = isDueToday(task.dueAt);
   const isUrgent = category?.kind === "urgent";
 
@@ -656,6 +670,16 @@ function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps)
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
         </select>
+        <select
+          value={task.accountableDirectReportId ?? "na"}
+          onChange={(event) => onUpdate(task.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
+          className="h-7 max-w-[150px] rounded-md border px-1.5 text-[11px] font-[inherit]"
+          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          aria-label={`Accountable Direct Report for ${task.text}`}
+        >
+          <option value="na">N/A</option>
+          {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
+        </select>
         <button
           className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent"
           style={{ color: "var(--text-muted)" }}
@@ -678,6 +702,7 @@ interface CategoryCardProps {
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
   dueRange: DueRange;
+  directReports: DirectReport[];
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
@@ -690,7 +715,7 @@ interface CategoryCardProps {
 }
 
 function CategoryCard({
-  cat, tasks, query, showCompleted, priorityFilter, dueRange,
+  cat, tasks, query, showCompleted, priorityFilter, dueRange, directReports,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
@@ -824,6 +849,7 @@ function CategoryCard({
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
                   dueRange={dueRange}
+                  directReports={directReports}
                   allCatTasks={tasks}
                   onUpdate={onUpdateTask}
                   onDelete={onDeleteTask}
@@ -876,6 +902,7 @@ export default function Dashboard() {
   const { data: categoriesData = [], isLoading: catsLoading } = trpc.categories.list.useQuery();
   const { data: tasksData = [], isLoading: tasksLoading } = trpc.tasks.listAll.useQuery();
   const { data: savedFilters = [] } = trpc.filters.list.useQuery();
+  const { data: directReports = [] } = trpc.directReports.list.useQuery();
 
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -890,6 +917,7 @@ export default function Dashboard() {
   const [filterName, setFilterName] = useState("");
   const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
   const [editingFilterId, setEditingFilterId] = useState<number | null>(null);
+  const [newDirectReportName, setNewDirectReportName] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -916,9 +944,12 @@ export default function Dashboard() {
   const createSavedFilterMut = trpc.filters.create.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
   const updateSavedFilterMut = trpc.filters.update.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
   const deleteSavedFilterMut = trpc.filters.delete.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
+  const createDirectReportMut = trpc.directReports.create.useMutation({ onSuccess: () => utils.directReports.list.invalidate() });
+  const updateDirectReportMut = trpc.directReports.update.useMutation({ onSuccess: () => utils.directReports.list.invalidate() });
+  const deleteDirectReportMut = trpc.directReports.delete.useMutation({ onSuccess: () => { utils.directReports.list.invalidate(); utils.tasks.listAll.invalidate(); } });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const importMut = trpc.data.import.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); toast.success("Snapshot imported successfully"); },
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
   });
 
@@ -1015,7 +1046,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!task) return;
-          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null, priority: task.priority, recurrence: task.recurrence });
+          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null, priority: task.priority, recurrence: task.recurrence, accountableDirectReportId: task.accountableDirectReportId ?? null });
           toast.success(`"${text}" restored.`);
         },
       },
@@ -1041,7 +1072,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           for (const t of doneTasks) {
-            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null, priority: t.priority, recurrence: t.recurrence });
+            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null, priority: t.priority, recurrence: t.recurrence, accountableDirectReportId: t.accountableDirectReportId ?? null });
           }
           toast.success(`${doneTasks.length} item${doneTasks.length !== 1 ? "s" : ""} restored.`);
         },
@@ -1072,6 +1103,22 @@ export default function Dashboard() {
     createCatMut.mutate({ name, kind: "normal", colorIndex, sortOrder: categoriesData.length });
     setNewCatName("");
   }, [newCatName, categoriesData, createCatMut]);
+
+  const handleAddDirectReport = useCallback(() => {
+    const name = newDirectReportName.trim();
+    if (!name) return;
+    createDirectReportMut.mutate({ name, sortOrder: directReports.length }, {
+      onSuccess: () => {
+        setNewDirectReportName("");
+        toast.success(`Added ${name} to Direct Reports.`);
+      },
+    });
+  }, [newDirectReportName, createDirectReportMut, directReports.length]);
+
+  const handleDeleteDirectReport = useCallback((report: DirectReport) => {
+    deleteDirectReportMut.mutate({ id: report.id });
+    toast(`Removed ${report.name}. Assigned tasks are now N/A.`);
+  }, [deleteDirectReportMut]);
 
   const handleSaveFilter = useCallback(() => {
     const name = filterName.trim();
@@ -1155,17 +1202,19 @@ export default function Dashboard() {
         const cats = (parsed.categories as Category[]).map((c, i) => ({
           name: c.name, kind: c.kind, colorIndex: c.colorIndex ?? i % 8, sortOrder: c.sortOrder ?? i, collapsed: c.collapsed ?? false,
         }));
-        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: Task["priority"]; recurrence: Task["recurrence"]; done: boolean; collapsed: boolean; sortOrder: number }> = [];
+        const parsedDirectReports = Array.isArray(parsed.directReports) ? parsed.directReports as DirectReport[] : [];
+        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: Task["priority"]; recurrence: Task["recurrence"]; accountableDirectReportIndex: number | null; done: boolean; collapsed: boolean; sortOrder: number }> = [];
         if (parsed.tasks && Array.isArray(parsed.tasks)) {
           (parsed.tasks as Task[]).forEach((t, i) => {
             const catIdxReal = parsed.categories.findIndex((c: Category) => c.id === t.categoryId);
             flatTasks.push({
               tempId: `t${i}`, categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
               parentTempId: t.parentId ? `t${parsed.tasks.findIndex((pt: Task) => pt.id === t.parentId)}` : null,
-              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, priority: t.priority ?? "medium", recurrence: t.recurrence ?? "none", done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
+              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, priority: t.priority ?? "medium", recurrence: t.recurrence ?? "none", accountableDirectReportIndex: t.accountableDirectReportId === null || t.accountableDirectReportId === undefined ? null : parsedDirectReports.findIndex((report) => report.id === t.accountableDirectReportId), done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
             });
           });
         }
+        const normalizedTasks = flatTasks.map((task) => ({ ...task, accountableDirectReportIndex: task.accountableDirectReportIndex !== null && task.accountableDirectReportIndex < 0 ? null : task.accountableDirectReportIndex }));
         const importedFilters = Array.isArray(parsed.filters)
           ? (parsed.filters as SavedFilter[]).map((filter) => ({
               name: filter.name,
@@ -1176,7 +1225,8 @@ export default function Dashboard() {
               sortOrder: filter.sortOrder,
             })).map((filter) => ({ ...filter, categoryIndex: filter.categoryIndex < 0 ? null : filter.categoryIndex }))
           : undefined;
-        importMut.mutate({ categories: cats, tasks: flatTasks, ...(importedFilters ? { filters: importedFilters } : {}) });
+        const importedDirectReports = parsedDirectReports.map((report, index) => ({ name: report.name, sortOrder: report.sortOrder ?? index }));
+        importMut.mutate({ categories: cats, tasks: normalizedTasks, ...(importedFilters ? { filters: importedFilters } : {}), ...(Array.isArray(parsed.directReports) ? { directReports: importedDirectReports } : {}) });
       } catch { toast.error("Could not read that file — is it a dashboard export?"); }
     };
     reader.readAsText(file);
@@ -1509,6 +1559,55 @@ export default function Dashboard() {
             )}
           </section>
 
+          <section className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+            <div className="mb-2">
+              <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Direct Reports</h2>
+              <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Maintain the people available in each task’s Accountable dropdown. N/A remains available for every task.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="min-w-[180px] flex-1 rounded-lg border px-3 py-2 text-[12px] font-[inherit]"
+                style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
+                value={newDirectReportName}
+                onChange={(event) => setNewDirectReportName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") handleAddDirectReport(); }}
+                placeholder="Add Direct Report…"
+                aria-label="New Direct Report name"
+              />
+              <button className="rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleAddDirectReport}>
+                Add Direct Report
+              </button>
+            </div>
+            {directReports.length > 0 ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {directReports.map((report) => {
+                  const assignedCount = tasksData.filter((task) => task.accountableDirectReportId === report.id).length;
+                  return (
+                    <div key={report.id} className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
+                      <input
+                        className="min-w-0 flex-1 border-none bg-transparent px-1 text-[12px] font-[inherit]"
+                        style={{ color: "var(--text-primary)", outline: "none" }}
+                        defaultValue={report.name}
+                        onBlur={(event) => {
+                          const name = event.target.value.trim() || report.name;
+                          event.target.value = name;
+                          if (name !== report.name) updateDirectReportMut.mutate({ id: report.id, name });
+                        }}
+                        aria-label={`Direct Report ${report.name}`}
+                      />
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{assignedCount} task{assignedCount === 1 ? "" : "s"}</span>
+                      <button className="flex h-6 w-6 items-center justify-center rounded-full border-none bg-transparent" style={{ color: "var(--text-muted)" }} type="button" title={`Delete ${report.name}`} aria-label={`Delete ${report.name}`} onClick={() => handleDeleteDirectReport(report)}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Direct Reports yet. Tasks currently use N/A until you add someone.</p>
+            )}
+          </section>
+
           {/* Add category */}
           <div className="flex gap-2 mb-4 items-center">
             <input
@@ -1572,6 +1671,7 @@ export default function Dashboard() {
                       key={task.id}
                       task={task}
                       category={categoriesData.find((category) => category.id === task.categoryId)}
+                      directReports={directReports}
                       onUpdate={handleUpdateTask}
                       onDelete={handleDeleteTask}
                     />
@@ -1605,6 +1705,7 @@ export default function Dashboard() {
                       key={task.id}
                       task={task}
                       category={categoriesData.find((category) => category.id === task.categoryId)}
+                      directReports={directReports}
                       onUpdate={handleUpdateTask}
                       onDelete={handleDeleteTask}
                     />
@@ -1638,6 +1739,7 @@ export default function Dashboard() {
                       key={task.id}
                       task={task}
                       category={categoriesData.find((category) => category.id === task.categoryId)}
+                      directReports={directReports}
                       onUpdate={handleUpdateTask}
                       onDelete={handleDeleteTask}
                     />
@@ -1720,6 +1822,7 @@ export default function Dashboard() {
                         key={task.id}
                         task={task}
                         category={categoriesData.find((category) => category.id === task.categoryId)}
+                        directReports={directReports}
                         onUpdate={handleUpdateTask}
                         onDelete={handleDeleteTask}
                       />
@@ -1750,6 +1853,7 @@ export default function Dashboard() {
                     showCompleted={showCompleted}
                     priorityFilter={priorityFilter}
                     dueRange={dueRange}
+                    directReports={directReports}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}

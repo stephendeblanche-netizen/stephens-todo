@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, categories, savedFilters, tasks, users } from "../drizzle/schema";
+import { InsertUser, categories, directReports, savedFilters, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -126,6 +126,34 @@ export async function deleteSavedFilter(id: number) {
   await db.delete(savedFilters).where(eq(savedFilters.id, id));
 }
 
+// ---- Direct Reports ----
+
+export async function getAllDirectReports() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(directReports).orderBy(asc(directReports.sortOrder), asc(directReports.name));
+}
+
+export async function createDirectReport(data: { name: string; sortOrder: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(directReports).values(data);
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+export async function updateDirectReport(id: number, data: Partial<{ name: string; sortOrder: number }>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(directReports).set(data).where(eq(directReports.id, id));
+}
+
+export async function deleteDirectReport(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tasks).set({ accountableDirectReportId: null }).where(eq(tasks.accountableDirectReportId, id));
+  await db.delete(directReports).where(eq(directReports.id, id));
+}
+
 // ---- Tasks ----
 
 export async function getTasksByCategory(categoryId: number) {
@@ -140,7 +168,7 @@ export async function getAllTasks() {
   return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
@@ -150,6 +178,7 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
     note: "",
     dueAt: data.dueAt ?? null,
     priority: data.priority ?? "medium",
+    accountableDirectReportId: data.accountableDirectReportId ?? null,
     recurrence: data.recurrence ?? "none",
     done: false,
     collapsed: false,
@@ -158,7 +187,7 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
   return (result as unknown as { insertId: number }).insertId;
 }
 
-export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
+export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportId: number | null; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
@@ -224,8 +253,9 @@ export async function getTopLevelTasks(categoryId: number) {
 
 export async function replaceAllData(
   newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
-  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number }>,
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportIndex: number | null; done: boolean; collapsed: boolean; sortOrder: number }>,
   newSavedFilters?: Array<{ name: string; priority: "all" | "high" | "medium" | "low"; dueRange: "all" | "today" | "this_week" | "next_7_days" | "overdue" | "no_due_date"; categoryIndex: number | null; includeCompleted: boolean; sortOrder: number }>,
+  newDirectReports?: Array<{ name: string; sortOrder: number }>,
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -239,6 +269,15 @@ export async function replaceAllData(
   for (const cat of newCategories) {
     const [result] = await db.insert(categories).values(cat);
     catIds.push((result as unknown as { insertId: number }).insertId);
+  }
+
+  const directReportIds: number[] = [];
+  if (newDirectReports !== undefined) {
+    await db.delete(directReports);
+    for (const report of newDirectReports) {
+      const [result] = await db.insert(directReports).values(report);
+      directReportIds.push((result as unknown as { insertId: number }).insertId);
+    }
   }
 
   // Re-insert tasks in order, tracking tempId -> real id for parent resolution
@@ -255,6 +294,7 @@ export async function replaceAllData(
       dueAt: task.dueAt,
       priority: task.priority,
       recurrence: task.recurrence,
+      accountableDirectReportId: task.accountableDirectReportIndex === null ? null : (directReportIds[task.accountableDirectReportIndex] ?? null),
       done: task.done,
       collapsed: task.collapsed,
       sortOrder: task.sortOrder,
