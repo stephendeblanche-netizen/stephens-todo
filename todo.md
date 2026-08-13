@@ -76,3 +76,9 @@
 - [x] Replace HTML5 drag events with pointer-events-based drag (works on iOS Safari/iPad)
 - [x] Task reordering via touch drag on iOS
 - [x] Category reordering via touch drag on iOS
+
+## Mobile Swipe-to-Delete
+- [x] Add a threshold-based left-swipe gesture to task rows on touch devices
+- [x] Ensure swiping reveals a delete action without interfering with scrolling, text editing, or drag handles
+- [x] Verify responsive task controls and deletion behavior on mobile
+- [x] Add unit coverage for touch intent, reveal threshold, and protected task controls

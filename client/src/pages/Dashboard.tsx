@@ -1,5 +1,12 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
+import {
+  canStartMobileSwipe,
+  clampSwipeOffset,
+  MOBILE_SWIPE_DELETE_WIDTH,
+  settleSwipeOffset,
+  shouldRevealSwipeDelete,
+} from "@/lib/swipe";
 import type { Category, Task } from "../../../drizzle/schema";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -103,7 +110,17 @@ function TaskItem({
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeOpen, setSwipeOpen] = useState(false);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const swipeRef = useRef({
+    tracking: false,
+    horizontal: false,
+    startX: 0,
+    startY: 0,
+    baseOffset: 0,
+    currentOffset: 0,
+  });
   const isNew = newTaskId === node.id;
 
   const {
@@ -136,14 +153,93 @@ function TaskItem({
 
   const hasChildren = node.children.length > 0;
 
+  const handleSwipeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Keep native scrolling, inline editing, controls, and dnd-kit handles intact.
+    if (!canStartMobileSwipe(event.pointerType, isDragOverlay, event.target)) return;
+
+    swipeRef.current = {
+      tracking: true,
+      horizontal: false,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseOffset: swipeOpen ? -MOBILE_SWIPE_DELETE_WIDTH : 0,
+      currentOffset: swipeOpen ? -MOBILE_SWIPE_DELETE_WIDTH : 0,
+    };
+  };
+
+  const handleSwipeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const swipe = swipeRef.current;
+    if (!swipe.tracking) return;
+
+    const deltaX = event.clientX - swipe.startX;
+    const deltaY = event.clientY - swipe.startY;
+
+    // Leave vertical page scrolling untouched.
+    if (!swipe.horizontal) {
+      if (Math.abs(deltaY) > 8 && Math.abs(deltaY) > Math.abs(deltaX)) {
+        swipe.tracking = false;
+        return;
+      }
+      if (Math.abs(deltaX) < 8) return;
+      if (deltaX > 0 && swipe.baseOffset === 0) {
+        swipe.tracking = false;
+        return;
+      }
+      swipe.horizontal = true;
+    }
+
+    const offset = clampSwipeOffset(swipe.baseOffset + deltaX);
+    swipe.currentOffset = offset;
+    setSwipeOffset(offset);
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const handleSwipeEnd = () => {
+    const swipe = swipeRef.current;
+    if (!swipe.tracking) return;
+    swipe.tracking = false;
+    if (!swipe.horizontal) return;
+
+    const finalOffset = settleSwipeOffset(swipe.currentOffset);
+    setSwipeOpen(shouldRevealSwipeDelete(finalOffset));
+    setSwipeOffset(finalOffset);
+  };
+
   return (
     <>
       <li ref={setNodeRef} style={style} className="list-none">
+        <div className="relative overflow-hidden rounded-md task-swipe-shell">
+          <div
+            className="absolute inset-y-0 right-0 flex w-24 items-stretch justify-end"
+            style={{ background: "var(--status-critical)" }}
+            aria-hidden={!swipeOpen}
+          >
+            <button
+              className="w-24 border-none bg-transparent text-[12px] font-semibold text-white"
+              type="button"
+              tabIndex={swipeOpen ? 0 : -1}
+              onClick={() => {
+                setSwipeOpen(false);
+                setSwipeOffset(0);
+                onDelete(node.id, node.text);
+              }}
+            >
+              <span className="flex flex-col items-center justify-center gap-1">
+                <Trash2 size={15} /> Delete
+              </span>
+            </button>
+          </div>
         <div
-          className="flex items-start gap-1 px-1.5 py-1 rounded-md select-none transition-colors duration-100"
+          className="relative z-10 flex items-start gap-1 px-1.5 py-1 rounded-md select-none transition-[transform,background-color] duration-200"
           style={{
-            background: hovered ? "var(--page-plane)" : "transparent",
+            background: hovered ? "var(--page-plane)" : "var(--card-surface)",
+            transform: `translateX(${swipeOffset}px)`,
+            touchAction: "pan-y",
           }}
+          onPointerDown={handleSwipeStart}
+          onPointerMove={handleSwipeMove}
+          onPointerUp={handleSwipeEnd}
+          onPointerCancel={handleSwipeEnd}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           data-task-item
@@ -158,6 +254,7 @@ function TaskItem({
               touchAction: "none",
               cursor: "grab",
             }}
+            data-drag-handle
             {...attributes}
             {...listeners}
           >
@@ -251,6 +348,7 @@ function TaskItem({
               <Trash2 size={11} />
             </button>
           </span>
+        </div>
         </div>
 
         {/* Note box */}
