@@ -137,3 +137,10 @@
 - [x] Build a Direct Reports management section with add, rename, and delete actions
 - [x] Preserve task accountability in snapshots, undo, and imports
 - [x] Test Direct Report management and task assignment behavior
+
+## Direct Report Filter & Task Nesting
+- [x] Add an all, N/A, and per-Direct-Report task filter option
+- [x] Apply Direct Report filters consistently to task lists and focused views
+- [x] Verify drag-to-nest behavior and provide clear feedback when dropping onto a task
+- [x] Test Direct Report filtering and task re-parenting behavior
+- [x] Test the explicit drag-to-nest drop target’s re-parenting payload and cycle rejection

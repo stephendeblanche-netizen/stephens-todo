@@ -19,6 +19,8 @@ import {
 } from "@/lib/today";
 import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } from "@/lib/calendar";
 import { applySavedFilter, matchesDueRange, type DueRange } from "@/lib/savedFilters";
+import { filterTasksByDirectReport, matchesDirectReport, type DirectReportFilter } from "@/lib/directReports";
+import { buildTaskNestUpdates, canNestTask } from "@/lib/taskNesting";
 import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -47,6 +49,8 @@ import {
   DragOverlay,
   PointerSensor,
   TouchSensor,
+  useDndContext,
+  useDroppable,
   useSensor,
   useSensors,
   closestCenter,
@@ -112,6 +116,10 @@ function matchesDueRangeTree(node: TaskNode, dueRange: DueRange): boolean {
   if (dueRange === "all" || matchesDueRange(node.dueAt, dueRange)) return true;
   return node.children.some((child) => matchesDueRangeTree(child, dueRange));
 }
+function matchesDirectReportTree(node: TaskNode, filter: DirectReportFilter): boolean {
+  if (matchesDirectReport(node.accountableDirectReportId, filter)) return true;
+  return node.children.some((child) => matchesDirectReportTree(child, filter));
+}
 function countNodes(nodes: TaskNode[]): { total: number; done: number } {
   let total = 0, done = 0;
   for (const n of nodes) {
@@ -125,10 +133,45 @@ function countNodes(nodes: TaskNode[]): { total: number; done: number } {
 // We prefix IDs so we can tell tasks from categories in drag events
 function taskDragId(id: number) { return `task-${id}`; }
 function catDragId(id: number) { return `cat-${id}`; }
+function nestDropId(id: number) { return `nest-${id}`; }
 function parseDragId(id: string): { type: "task" | "cat"; id: number } | null {
   if (id.startsWith("task-")) return { type: "task", id: parseInt(id.slice(5)) };
   if (id.startsWith("cat-")) return { type: "cat", id: parseInt(id.slice(4)) };
   return null;
+}
+function parseNestDropId(id: string): number | null {
+  if (!id.startsWith("nest-")) return null;
+  const parsed = Number.parseInt(id.slice(5), 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function TaskNestDropTarget({ taskId, taskText, tasks }: { taskId: number; taskText: string; tasks: Task[] }) {
+  const { active } = useDndContext();
+  const activeInfo = active ? parseDragId(String(active.id)) : null;
+  const canAccept = activeInfo?.type === "task" && canNestTask(tasks, activeInfo.id, taskId);
+  const { setNodeRef, isOver } = useDroppable({
+    id: nestDropId(taskId),
+    disabled: !canAccept,
+    data: { type: "nest", parentId: taskId },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="mx-2 overflow-hidden rounded-md text-center text-[10px] font-semibold transition-all duration-150"
+      style={{
+        height: activeInfo?.type === "task" ? 26 : 2,
+        marginTop: activeInfo?.type === "task" ? 3 : 0,
+        color: isOver ? "var(--slot-1)" : "transparent",
+        background: isOver ? "var(--drop-wash)" : "transparent",
+        outline: isOver ? "1px dashed var(--slot-1)" : "none",
+        lineHeight: "26px",
+      }}
+      aria-hidden={!canAccept}
+    >
+      {isOver ? `Drop to make a sub-task of “${taskText}”` : ""}
+    </div>
+  );
 }
 
 // ---- TaskItem ----
@@ -140,6 +183,7 @@ interface TaskItemProps {
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
   dueRange: DueRange;
+  directReportFilter: DirectReportFilter;
   directReports: DirectReport[];
   allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
@@ -152,7 +196,7 @@ interface TaskItemProps {
 }
 
 function TaskItem({
-  node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReports, allCatTasks,
+  node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, allCatTasks,
   onUpdate, onDelete, onSwipeDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
@@ -202,6 +246,7 @@ function TaskItem({
   if (query && !matchesSearch(node, query) && !isDragOverlay) return null;
   if (priorityFilter !== "all" && !matchesPriority(node, priorityFilter) && !isDragOverlay) return null;
   if (dueRange !== "all" && !matchesDueRangeTree(node, dueRange) && !isDragOverlay) return null;
+  if (directReportFilter !== "all" && !matchesDirectReportTree(node, directReportFilter) && !isDragOverlay) return null;
 
   const hasChildren = node.children.length > 0;
 
@@ -448,6 +493,8 @@ function TaskItem({
         </div>
         </div>
 
+        <TaskNestDropTarget taskId={node.id} taskText={node.text} tasks={allCatTasks} />
+
         {/* Task schedule and priority editor */}
         {dueOpen && (
           <div className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2">
@@ -555,6 +602,7 @@ function TaskItem({
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
                   dueRange={dueRange}
+                  directReportFilter={directReportFilter}
                   directReports={directReports}
                   allCatTasks={allCatTasks}
                   onUpdate={onUpdate}
@@ -702,6 +750,7 @@ interface CategoryCardProps {
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
   dueRange: DueRange;
+  directReportFilter: DirectReportFilter;
   directReports: DirectReport[];
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
@@ -715,7 +764,7 @@ interface CategoryCardProps {
 }
 
 function CategoryCard({
-  cat, tasks, query, showCompleted, priorityFilter, dueRange, directReports,
+  cat, tasks, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
@@ -750,7 +799,8 @@ function CategoryCard({
   const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
   const hasMatchingPriority = priorityFilter === "all" || tasks.some((task) => task.priority === priorityFilter);
   const hasMatchingDueRange = dueRange === "all" || tasks.some((task) => matchesDueRange(task.dueAt, dueRange));
-  if ((query && !hasMatchingItems) || !hasMatchingPriority || !hasMatchingDueRange) return null;
+  const hasMatchingDirectReport = directReportFilter === "all" || tasks.some((task) => matchesDirectReport(task.accountableDirectReportId, directReportFilter));
+  if ((query && !hasMatchingItems) || !hasMatchingPriority || !hasMatchingDueRange || !hasMatchingDirectReport) return null;
 
   return (
     <div
@@ -849,6 +899,7 @@ function CategoryCard({
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
                   dueRange={dueRange}
+                  directReportFilter={directReportFilter}
                   directReports={directReports}
                   allCatTasks={tasks}
                   onUpdate={onUpdateTask}
@@ -914,6 +965,7 @@ export default function Dashboard() {
   });
   const [priorityFilter, setPriorityFilter] = useState<"all" | Task["priority"]>("all");
   const [dueRange, setDueRange] = useState<DueRange>("all");
+  const [directReportFilter, setDirectReportFilter] = useState<DirectReportFilter>("all");
   const [filterName, setFilterName] = useState("");
   const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
   const [editingFilterId, setEditingFilterId] = useState<number | null>(null);
@@ -1000,14 +1052,26 @@ export default function Dashboard() {
     () => applySavedFilter(upcomingTasks, activeSavedCriteria),
     [upcomingTasks, activeSavedCriteria],
   );
+  const directReportFilteredTodayTasks = useMemo(
+    () => filterTasksByDirectReport(savedFilteredTodayTasks, directReportFilter),
+    [savedFilteredTodayTasks, directReportFilter],
+  );
+  const directReportFilteredUpcomingTasks = useMemo(
+    () => filterTasksByDirectReport(savedFilteredUpcomingTasks, directReportFilter),
+    [savedFilteredUpcomingTasks, directReportFilter],
+  );
   const highPriorityTasks = useMemo(
     () => tasksData.filter((task) => !task.done && task.priority === "high"),
     [tasksData],
   );
+  const directReportFilteredHighPriorityTasks = useMemo(
+    () => filterTasksByDirectReport(highPriorityTasks, directReportFilter),
+    [highPriorityTasks, directReportFilter],
+  );
   const calendarDays = useMemo(() => calendarMonthDays(calendarMonth), [calendarMonth]);
   const calendarTaskGroups = useMemo(
-    () => groupTasksByDay(applySavedFilter(tasksData, activeSavedCriteria)),
-    [tasksData, activeSavedCriteria],
+    () => groupTasksByDay(filterTasksByDirectReport(applySavedFilter(tasksData, activeSavedCriteria), directReportFilter)),
+    [tasksData, activeSavedCriteria, directReportFilter],
   );
   const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
 
@@ -1272,8 +1336,22 @@ export default function Dashboard() {
     if (!over || active.id === over.id) return;
 
     const activeInfo = parseDragId(String(active.id));
+    if (!activeInfo) return;
+
+    const nestParentId = parseNestDropId(String(over.id));
+    if (activeInfo.type === "task" && nestParentId !== null) {
+      const activeTask = tasksData.find((task) => task.id === activeInfo.id);
+      const parentTask = tasksData.find((task) => task.id === nestParentId);
+      if (!activeTask || !parentTask) return;
+      const nestUpdates = buildTaskNestUpdates(tasksData, activeTask.id, parentTask.id);
+      if (!nestUpdates) return;
+      reorderTaskMut.mutate(nestUpdates);
+      toast.success(`Moved “${activeTask.text}” under “${parentTask.text}”.`);
+      return;
+    }
+
     const overInfo = parseDragId(String(over.id));
-    if (!activeInfo || !overInfo) return;
+    if (!overInfo) return;
 
     // ---- Category reorder ----
     // Always work against the FULL sorted category list so hidden (filtered) categories
@@ -1494,6 +1572,17 @@ export default function Dashboard() {
               <option value="overdue">Overdue</option>
               <option value="no_due_date">No due date</option>
             </select>
+            <select
+              className="h-9 rounded-full border px-3 text-[12px] font-[inherit]"
+              style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+              value={directReportFilter}
+              onChange={(event) => setDirectReportFilter(event.target.value === "all" || event.target.value === "na" ? event.target.value : Number(event.target.value))}
+              aria-label="Accountable Direct Report filter"
+            >
+              <option value="all">All Direct Reports</option>
+              <option value="na">Accountable: N/A</option>
+              {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
+            </select>
             <label
               className="flex items-center gap-2 px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit]"
               style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
@@ -1661,12 +1750,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {savedFilteredTodayTasks.length} task{savedFilteredTodayTasks.length === 1 ? "" : "s"}
+                  {directReportFilteredTodayTasks.length} task{directReportFilteredTodayTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {savedFilteredTodayTasks.length > 0 ? (
+              {directReportFilteredTodayTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {savedFilteredTodayTasks.map((task) => (
+                  {directReportFilteredTodayTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1695,12 +1784,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {savedFilteredUpcomingTasks.length} task{savedFilteredUpcomingTasks.length === 1 ? "" : "s"}
+                  {directReportFilteredUpcomingTasks.length} task{directReportFilteredUpcomingTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {savedFilteredUpcomingTasks.length > 0 ? (
+              {directReportFilteredUpcomingTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {savedFilteredUpcomingTasks.map((task) => (
+                  {directReportFilteredUpcomingTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1729,12 +1818,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--status-critical)", borderColor: "var(--status-critical)", background: "var(--card-surface)" }}>
-                  {highPriorityTasks.length} task{highPriorityTasks.length === 1 ? "" : "s"}
+                  {directReportFilteredHighPriorityTasks.length} task{directReportFilteredHighPriorityTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {highPriorityTasks.length > 0 ? (
+              {directReportFilteredHighPriorityTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {highPriorityTasks.map((task) => (
+                  {directReportFilteredHighPriorityTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1853,6 +1942,7 @@ export default function Dashboard() {
                     showCompleted={showCompleted}
                     priorityFilter={priorityFilter}
                     dueRange={dueRange}
+                    directReportFilter={directReportFilter}
                     directReports={directReports}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}

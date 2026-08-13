@@ -12,9 +12,9 @@ const fixture = vi.hoisted(() => ({
     { id: 2, name: "QDR", kind: "normal", colorIndex: 1, sortOrder: 1, collapsed: false },
   ],
   tasks: [
-    { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", done: false, collapsed: false, sortOrder: 0 },
-    { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", done: false, collapsed: false, sortOrder: 1 },
-    { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", done: false, collapsed: false, sortOrder: 2 },
+    { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
+    { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+    { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
   ],
   filters: [
     { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
@@ -170,8 +170,17 @@ describe("Dashboard focused priority views", () => {
     renderDashboard("all");
     const accountable = screen.getAllByRole("combobox", { name: "Accountable Direct Report for Urgent high today" })[0] as HTMLSelectElement;
     expect(Array.from(accountable.options).map((option) => option.text)).toEqual(["N/A", "Alex Morgan"]);
-    await user.selectOptions(accountable, "1");
-    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, accountableDirectReportId: 1 });
+    await user.selectOptions(accountable, "na");
+    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, accountableDirectReportId: null });
+  });
+
+  it("filters the main task list to a selected Direct Report", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Accountable Direct Report filter" }), "1");
+    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
+    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
+    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
   });
 
   it("adds a Direct Report from the management section", async () => {
