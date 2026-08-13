@@ -116,3 +116,16 @@
 - [x] Add focused-view tests for priority filters and the High quick view state
 - [x] Add Dashboard tests for priority filters in Today and Upcoming views
 - [x] Add Dashboard tests for the High quick view URL state and rendered task selection
+
+## Saved Custom Filters
+- [x] Add persistent saved-filter storage and server-side CRUD APIs
+- [x] Support named combinations of priority, due-date range, category, and completion status
+- [x] Add controls to create, apply, and delete saved filters
+- [x] Seed a reusable “High priority due this week” filter
+- [x] Test saved-filter persistence and task selection behavior
+- [x] Preserve saved custom filters in JSON exports and imports
+- [x] Add an update API and database helper for saved filters
+- [x] Add an edit workflow for renaming or changing an existing saved filter
+- [x] Test saved-filter update behavior
+- [x] Test submitted saved-filter edits and refreshed rendered filter data
+- [x] Test refreshed saved-filter list data after an edited filter is updated

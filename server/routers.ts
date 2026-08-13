@@ -12,6 +12,10 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  createSavedFilter,
+  deleteSavedFilter,
+  getAllSavedFilters,
+  updateSavedFilter,
   replaceAllData,
 } from "./db";
 import { cascadeCategoryId, getDescendantIds } from "./db";
@@ -77,6 +81,42 @@ export const appRouter = router({
         for (const item of input) {
           await updateCategory(item.id, { sortOrder: item.sortOrder });
         }
+        return { success: true };
+      }),
+  }),
+
+  // ---- Saved filters ----
+  filters: router({
+    list: publicProcedure.query(async () => getAllSavedFilters()),
+    create: publicProcedure
+      .input(z.object({
+        name: z.string().trim().min(1).max(120),
+        priority: z.enum(["all", "high", "medium", "low"]).default("all"),
+        dueRange: z.enum(["all", "today", "this_week", "next_7_days", "overdue", "no_due_date"]).default("all"),
+        categoryId: z.number().int().nullable().default(null),
+        includeCompleted: z.boolean().default(false),
+        sortOrder: z.number().int().default(0),
+      }))
+      .mutation(async ({ input }) => ({ id: await createSavedFilter(input) })),
+    update: publicProcedure
+      .input(z.object({
+        id: z.number().int(),
+        name: z.string().trim().min(1).max(120),
+        priority: z.enum(["all", "high", "medium", "low"]),
+        dueRange: z.enum(["all", "today", "this_week", "next_7_days", "overdue", "no_due_date"]),
+        categoryId: z.number().int().nullable(),
+        includeCompleted: z.boolean(),
+        sortOrder: z.number().int(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateSavedFilter(id, data);
+        return { success: true };
+      }),
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await deleteSavedFilter(input.id);
         return { success: true };
       }),
   }),
@@ -222,7 +262,8 @@ export const appRouter = router({
     export: publicProcedure.query(async () => {
       const cats = await getAllCategories();
       const allTasks = await getAllTasks();
-      return { categories: cats, tasks: allTasks, exportedAt: new Date().toISOString() };
+      const filters = await getAllSavedFilters();
+      return { categories: cats, tasks: allTasks, filters, exportedAt: new Date().toISOString() };
     }),
 
     import: publicProcedure
@@ -247,9 +288,17 @@ export const appRouter = router({
           collapsed: z.boolean(),
           sortOrder: z.number().int(),
         })),
+        filters: z.array(z.object({
+          name: z.string().min(1).max(120),
+          priority: z.enum(["all", "high", "medium", "low"]),
+          dueRange: z.enum(["all", "today", "this_week", "next_7_days", "overdue", "no_due_date"]),
+          categoryIndex: z.number().int().nullable(),
+          includeCompleted: z.boolean(),
+          sortOrder: z.number().int(),
+        })).optional(),
       }))
       .mutation(async ({ input }) => {
-        await replaceAllData(input.categories, input.tasks);
+        await replaceAllData(input.categories, input.tasks, input.filters);
         return { success: true };
       }),
   }),

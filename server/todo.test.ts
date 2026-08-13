@@ -21,6 +21,12 @@ vi.mock("./db", () => ({
   replaceAllData: vi.fn().mockResolvedValue(new Map()),
   upsertUser: vi.fn().mockResolvedValue(undefined),
   getUserByOpenId: vi.fn().mockResolvedValue(undefined),
+  getAllSavedFilters: vi.fn().mockResolvedValue([
+    { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
+  ]),
+  createSavedFilter: vi.fn().mockResolvedValue(2),
+  updateSavedFilter: vi.fn().mockResolvedValue(undefined),
+  deleteSavedFilter: vi.fn().mockResolvedValue(undefined),
   cascadeCategoryId: vi.fn().mockResolvedValue(undefined),
   getDescendantIds: vi.fn().mockResolvedValue([]),
   getDb: vi.fn().mockResolvedValue(null),
@@ -64,6 +70,43 @@ describe("categories router", () => {
   it("reorders categories", async () => {
     const caller = appRouter.createCaller(createCtx());
     const result = await caller.categories.reorder([{ id: 1, sortOrder: 1 }, { id: 2, sortOrder: 0 }]);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("saved filters router", () => {
+  it("lists saved filters", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.filters.list();
+    expect(result[0]?.name).toBe("High priority due this week");
+  });
+
+  it("creates and deletes a saved filter", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const created = await caller.filters.create({
+      name: "High priority due this week",
+      priority: "high",
+      dueRange: "this_week",
+      categoryId: null,
+      includeCompleted: false,
+      sortOrder: 1,
+    });
+    const deleted = await caller.filters.delete({ id: created.id });
+    expect(created.id).toBe(2);
+    expect(deleted.success).toBe(true);
+  });
+
+  it("updates an existing saved filter", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.filters.update({
+      id: 1,
+      name: "High priority this week",
+      priority: "high",
+      dueRange: "this_week",
+      categoryId: null,
+      includeCompleted: false,
+      sortOrder: 0,
+    });
     expect(result.success).toBe(true);
   });
 });

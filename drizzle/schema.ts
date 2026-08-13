@@ -31,6 +31,22 @@ export const categories = mysqlTable("categories", {
 export type Category = typeof categories.$inferSelect;
 export type InsertCategory = typeof categories.$inferInsert;
 
+// Saved reusable combinations for task filtering.
+export const savedFilters = mysqlTable("saved_filters", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  priority: mysqlEnum("priority", ["all", "high", "medium", "low"]).default("all").notNull(),
+  dueRange: mysqlEnum("dueRange", ["all", "today", "this_week", "next_7_days", "overdue", "no_due_date"]).default("all").notNull(),
+  categoryId: int("categoryId"),
+  includeCompleted: boolean("includeCompleted").default(false).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SavedFilter = typeof savedFilters.$inferSelect;
+export type InsertSavedFilter = typeof savedFilters.$inferInsert;
+
 // Tasks table — supports unlimited nesting via parentId self-reference
 export const tasks = mysqlTable("tasks", {
   id: int("id").autoincrement().primaryKey(),

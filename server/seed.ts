@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/mysql2";
-import { categories, tasks } from "../drizzle/schema.ts";
+import { categories, savedFilters, tasks } from "../drizzle/schema.ts";
 
 const SEED_CATEGORIES = [
   {
@@ -203,24 +203,33 @@ async function insertTasksRecursive(
 
 export async function seedIfEmpty(db: ReturnType<typeof drizzle>): Promise<void> {
   const existing = await db.select().from(categories).limit(1);
-  if (existing.length > 0) {
-    return; // already seeded
+  if (existing.length === 0) {
+    console.log("[Seed] Seeding initial data...");
+    for (const cat of SEED_CATEGORIES) {
+      const [catResult] = await db.insert(categories).values({
+        name: cat.name,
+        kind: cat.kind,
+        colorIndex: cat.colorIndex,
+        sortOrder: cat.sortOrder,
+        collapsed: false,
+      });
+
+      const catId = (catResult as unknown as { insertId: number }).insertId;
+      await insertTasksRecursive(db, cat.items, catId, null, 0);
+    }
+    console.log("[Seed] Initial tasks done.");
   }
 
-  console.log("[Seed] Seeding initial data...");
-
-  for (const cat of SEED_CATEGORIES) {
-    const [catResult] = await db.insert(categories).values({
-      name: cat.name,
-      kind: cat.kind,
-      colorIndex: cat.colorIndex,
-      sortOrder: cat.sortOrder,
-      collapsed: false,
+  const existingFilters = await db.select().from(savedFilters).limit(1);
+  if (existingFilters.length === 0) {
+    await db.insert(savedFilters).values({
+      name: "High priority due this week",
+      priority: "high",
+      dueRange: "this_week",
+      categoryId: null,
+      includeCompleted: false,
+      sortOrder: 0,
     });
-
-    const catId = (catResult as unknown as { insertId: number }).insertId;
-    await insertTasksRecursive(db, cat.items, catId, null, 0);
+    console.log("[Seed] Default saved filter created.");
   }
-
-  console.log("[Seed] Done.");
 }

@@ -18,7 +18,8 @@ import {
   toLocalDateInputValue,
 } from "@/lib/today";
 import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } from "@/lib/calendar";
-import type { Category, Task } from "../../../drizzle/schema";
+import { applySavedFilter, matchesDueRange, type DueRange } from "@/lib/savedFilters";
+import type { Category, SavedFilter, Task } from "../../../drizzle/schema";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -107,6 +108,10 @@ function matchesPriority(node: TaskNode, priority: "all" | Task["priority"]): bo
   if (node.priority === priority) return true;
   return node.children.some((child) => matchesPriority(child, priority));
 }
+function matchesDueRangeTree(node: TaskNode, dueRange: DueRange): boolean {
+  if (dueRange === "all" || matchesDueRange(node.dueAt, dueRange)) return true;
+  return node.children.some((child) => matchesDueRangeTree(child, dueRange));
+}
 function countNodes(nodes: TaskNode[]): { total: number; done: number } {
   let total = 0, done = 0;
   for (const n of nodes) {
@@ -134,6 +139,7 @@ interface TaskItemProps {
   query: string;
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
+  dueRange: DueRange;
   allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
@@ -145,7 +151,7 @@ interface TaskItemProps {
 }
 
 function TaskItem({
-  node, categoryId, depth, query, showCompleted, priorityFilter, allCatTasks,
+  node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, allCatTasks,
   onUpdate, onDelete, onSwipeDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
@@ -194,6 +200,7 @@ function TaskItem({
   if (node.done && !showCompleted && !isDragOverlay) return null;
   if (query && !matchesSearch(node, query) && !isDragOverlay) return null;
   if (priorityFilter !== "all" && !matchesPriority(node, priorityFilter) && !isDragOverlay) return null;
+  if (dueRange !== "all" && !matchesDueRangeTree(node, dueRange) && !isDragOverlay) return null;
 
   const hasChildren = node.children.length > 0;
 
@@ -535,6 +542,7 @@ function TaskItem({
                   query={query}
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
+                  dueRange={dueRange}
                   allCatTasks={allCatTasks}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
@@ -669,6 +677,7 @@ interface CategoryCardProps {
   query: string;
   showCompleted: boolean;
   priorityFilter: "all" | Task["priority"];
+  dueRange: DueRange;
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
@@ -681,7 +690,7 @@ interface CategoryCardProps {
 }
 
 function CategoryCard({
-  cat, tasks, query, showCompleted, priorityFilter,
+  cat, tasks, query, showCompleted, priorityFilter, dueRange,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
@@ -715,7 +724,8 @@ function CategoryCard({
   );
   const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
   const hasMatchingPriority = priorityFilter === "all" || tasks.some((task) => task.priority === priorityFilter);
-  if ((query && !hasMatchingItems) || !hasMatchingPriority) return null;
+  const hasMatchingDueRange = dueRange === "all" || tasks.some((task) => matchesDueRange(task.dueAt, dueRange));
+  if ((query && !hasMatchingItems) || !hasMatchingPriority || !hasMatchingDueRange) return null;
 
   return (
     <div
@@ -813,6 +823,7 @@ function CategoryCard({
                   query={query}
                   showCompleted={showCompleted}
                   priorityFilter={priorityFilter}
+                  dueRange={dueRange}
                   allCatTasks={tasks}
                   onUpdate={onUpdateTask}
                   onDelete={onDeleteTask}
@@ -864,6 +875,7 @@ export default function Dashboard() {
 
   const { data: categoriesData = [], isLoading: catsLoading } = trpc.categories.list.useQuery();
   const { data: tasksData = [], isLoading: tasksLoading } = trpc.tasks.listAll.useQuery();
+  const { data: savedFilters = [] } = trpc.filters.list.useQuery();
 
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -874,6 +886,10 @@ export default function Dashboard() {
     return view === "today" || view === "upcoming" || view === "high" || view === "calendar" ? view : "all";
   });
   const [priorityFilter, setPriorityFilter] = useState<"all" | Task["priority"]>("all");
+  const [dueRange, setDueRange] = useState<DueRange>("all");
+  const [filterName, setFilterName] = useState("");
+  const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
+  const [editingFilterId, setEditingFilterId] = useState<number | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -897,9 +913,12 @@ export default function Dashboard() {
   const clearCompletedMut = trpc.tasks.clearCompleted.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderCatMut = trpc.categories.reorder.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
+  const createSavedFilterMut = trpc.filters.create.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
+  const updateSavedFilterMut = trpc.filters.update.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
+  const deleteSavedFilterMut = trpc.filters.delete.useMutation({ onSuccess: () => utils.filters.list.invalidate() });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const importMut = trpc.data.import.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); toast.success("Snapshot imported successfully"); },
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
   });
 
@@ -936,14 +955,28 @@ export default function Dashboard() {
     () => filterTasksByPriority(upcomingTasks, priorityFilter),
     [upcomingTasks, priorityFilter],
   );
+  const activeSavedCriteria = useMemo(() => ({
+    priority: priorityFilter,
+    dueRange,
+    categoryId: filterCategoryId,
+    includeCompleted: showCompleted,
+  }), [priorityFilter, dueRange, filterCategoryId, showCompleted]);
+  const savedFilteredTodayTasks = useMemo(
+    () => applySavedFilter(todayTasks, activeSavedCriteria),
+    [todayTasks, activeSavedCriteria],
+  );
+  const savedFilteredUpcomingTasks = useMemo(
+    () => applySavedFilter(upcomingTasks, activeSavedCriteria),
+    [upcomingTasks, activeSavedCriteria],
+  );
   const highPriorityTasks = useMemo(
     () => tasksData.filter((task) => !task.done && task.priority === "high"),
     [tasksData],
   );
   const calendarDays = useMemo(() => calendarMonthDays(calendarMonth), [calendarMonth]);
   const calendarTaskGroups = useMemo(
-    () => groupTasksByDay(showCompleted ? priorityFilteredTasks : priorityFilteredTasks.filter((task) => !task.done)),
-    [priorityFilteredTasks, showCompleted],
+    () => groupTasksByDay(applySavedFilter(tasksData, activeSavedCriteria)),
+    [tasksData, activeSavedCriteria],
   );
   const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
 
@@ -1040,6 +1073,65 @@ export default function Dashboard() {
     setNewCatName("");
   }, [newCatName, categoriesData, createCatMut]);
 
+  const handleSaveFilter = useCallback(() => {
+    const name = filterName.trim();
+    if (!name) {
+      toast.error("Name this filter before saving it.");
+      return;
+    }
+    const filterData = {
+      name,
+      priority: priorityFilter,
+      dueRange,
+      categoryId: filterCategoryId,
+      includeCompleted: showCompleted,
+      sortOrder: editingFilterId === null ? savedFilters.length : (savedFilters.find((filter) => filter.id === editingFilterId)?.sortOrder ?? 0),
+    };
+    const onSuccess = () => {
+      setFilterName("");
+      setEditingFilterId(null);
+      toast.success(editingFilterId === null ? `Saved “${name}”` : `Updated “${name}”`);
+    };
+    if (editingFilterId !== null) {
+      updateSavedFilterMut.mutate({ id: editingFilterId, ...filterData }, { onSuccess });
+      return;
+    }
+    createSavedFilterMut.mutate(filterData, {
+      onSuccess,
+    });
+  }, [filterName, createSavedFilterMut, updateSavedFilterMut, priorityFilter, dueRange, filterCategoryId, showCompleted, savedFilters, editingFilterId]);
+
+  const handleApplySavedFilter = useCallback((filter: SavedFilter) => {
+    setPriorityFilter(filter.priority);
+    setDueRange(filter.dueRange);
+    setFilterCategoryId(filter.categoryId ?? null);
+    setActiveCats(filter.categoryId ? new Set([filter.categoryId]) : null);
+    setShowCompleted(filter.includeCompleted);
+    setActiveView("all");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    window.history.replaceState({}, "", url);
+    toast.success(`Applied “${filter.name}”`);
+  }, []);
+
+  const handleDeleteSavedFilter = useCallback((filter: SavedFilter) => {
+    deleteSavedFilterMut.mutate({ id: filter.id });
+    if (editingFilterId === filter.id) {
+      setEditingFilterId(null);
+      setFilterName("");
+    }
+    toast(`Deleted saved filter “${filter.name}”`);
+  }, [deleteSavedFilterMut, editingFilterId]);
+
+  const handleEditSavedFilter = useCallback((filter: SavedFilter) => {
+    setEditingFilterId(filter.id);
+    setFilterName(filter.name);
+    setPriorityFilter(filter.priority);
+    setDueRange(filter.dueRange);
+    setFilterCategoryId(filter.categoryId ?? null);
+    setShowCompleted(filter.includeCompleted);
+  }, []);
+
   // ---- Export / Import ----
   const handleExport = useCallback(async () => {
     const result = await exportQuery.refetch();
@@ -1074,7 +1166,17 @@ export default function Dashboard() {
             });
           });
         }
-        importMut.mutate({ categories: cats, tasks: flatTasks });
+        const importedFilters = Array.isArray(parsed.filters)
+          ? (parsed.filters as SavedFilter[]).map((filter) => ({
+              name: filter.name,
+              priority: filter.priority,
+              dueRange: filter.dueRange,
+              categoryIndex: filter.categoryId === null ? null : parsed.categories.findIndex((category: Category) => category.id === filter.categoryId),
+              includeCompleted: filter.includeCompleted,
+              sortOrder: filter.sortOrder,
+            })).map((filter) => ({ ...filter, categoryIndex: filter.categoryIndex < 0 ? null : filter.categoryIndex }))
+          : undefined;
+        importMut.mutate({ categories: cats, tasks: flatTasks, ...(importedFilters ? { filters: importedFilters } : {}) });
       } catch { toast.error("Could not read that file — is it a dashboard export?"); }
     };
     reader.readAsText(file);
@@ -1328,6 +1430,20 @@ export default function Dashboard() {
                 );
               })}
             </div>
+            <select
+              className="h-9 rounded-full border px-3 text-[12px] font-[inherit]"
+              style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+              value={dueRange}
+              onChange={(event) => setDueRange(event.target.value as DueRange)}
+              aria-label="Due date range filter"
+            >
+              <option value="all">Any due date</option>
+              <option value="today">Due today</option>
+              <option value="this_week">Due this week</option>
+              <option value="next_7_days">Due next 7 days</option>
+              <option value="overdue">Overdue</option>
+              <option value="no_due_date">No due date</option>
+            </select>
             <label
               className="flex items-center gap-2 px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit]"
               style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
@@ -1342,6 +1458,56 @@ export default function Dashboard() {
               />
             </label>
           </div>
+
+          <section className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Saved filters</h2>
+                <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Save the current priority, due-date, category, and completion combination.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="min-w-[180px] flex-1 rounded-lg border px-3 py-2 text-[12px] font-[inherit]"
+                style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
+                value={filterName}
+                onChange={(event) => setFilterName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") handleSaveFilter(); }}
+                placeholder={editingFilterId === null ? "Name this filter…" : "Edit saved filter name…"}
+                aria-label="Saved filter name"
+              />
+              <select
+                className="rounded-lg border px-2 py-2 text-[12px] font-[inherit]"
+                style={{ background: "var(--page-plane)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+                value={filterCategoryId ?? "all"}
+                onChange={(event) => setFilterCategoryId(event.target.value === "all" ? null : Number(event.target.value))}
+                aria-label="Saved filter category"
+              >
+                <option value="all">All categories</option>
+                {categoriesData.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+              <button className="rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleSaveFilter}>
+                {editingFilterId === null ? "Save filter" : "Update filter"}
+              </button>
+            </div>
+            {savedFilters.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {savedFilters.map((filter) => (
+                  <div key={filter.id} className="flex items-center gap-1 rounded-full border pl-3 pr-1 py-1" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)", background: "var(--page-plane)" }}>
+                    <button className="border-none bg-transparent px-0.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)" }} type="button" onClick={() => handleApplySavedFilter(filter)}>
+                      {filter.name}
+                    </button>
+                    <button className="rounded-full border-none bg-transparent px-1 text-[10px] font-[inherit]" style={{ color: "var(--slot-1)" }} type="button" title={`Edit ${filter.name}`} aria-label={`Edit ${filter.name}`} onClick={() => handleEditSavedFilter(filter)}>
+                      Edit
+                    </button>
+                    <button className="flex h-5 w-5 items-center justify-center rounded-full border-none bg-transparent" style={{ color: "var(--text-muted)" }} type="button" title={`Delete ${filter.name}`} aria-label={`Delete ${filter.name}`} onClick={() => handleDeleteSavedFilter(filter)}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           {/* Add category */}
           <div className="flex gap-2 mb-4 items-center">
@@ -1396,12 +1562,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {priorityFilteredTodayTasks.length} task{priorityFilteredTodayTasks.length === 1 ? "" : "s"}
+                  {savedFilteredTodayTasks.length} task{savedFilteredTodayTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {priorityFilteredTodayTasks.length > 0 ? (
+              {savedFilteredTodayTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {priorityFilteredTodayTasks.map((task) => (
+                  {savedFilteredTodayTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1429,12 +1595,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {priorityFilteredUpcomingTasks.length} task{priorityFilteredUpcomingTasks.length === 1 ? "" : "s"}
+                  {savedFilteredUpcomingTasks.length} task{savedFilteredUpcomingTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {priorityFilteredUpcomingTasks.length > 0 ? (
+              {savedFilteredUpcomingTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {priorityFilteredUpcomingTasks.map((task) => (
+                  {savedFilteredUpcomingTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1583,6 +1749,7 @@ export default function Dashboard() {
                     query={query.toLowerCase()}
                     showCompleted={showCompleted}
                     priorityFilter={priorityFilter}
+                    dueRange={dueRange}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}

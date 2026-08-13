@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, categories, tasks, users } from "../drizzle/schema";
+import { InsertUser, categories, savedFilters, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -88,6 +88,42 @@ export async function deleteCategory(id: number) {
   // Delete all tasks in this category first
   await db.delete(tasks).where(eq(tasks.categoryId, id));
   await db.delete(categories).where(eq(categories.id, id));
+}
+
+// ---- Saved filters ----
+
+export type SavedFilterInput = {
+  name: string;
+  priority: "all" | "high" | "medium" | "low";
+  dueRange: "all" | "today" | "this_week" | "next_7_days" | "overdue" | "no_due_date";
+  categoryId: number | null;
+  includeCompleted: boolean;
+  sortOrder: number;
+};
+
+export async function getAllSavedFilters() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(savedFilters).orderBy(asc(savedFilters.sortOrder));
+}
+
+export async function createSavedFilter(data: SavedFilterInput) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(savedFilters).values(data);
+  return (result as unknown as { insertId: number }).insertId;
+}
+
+export async function updateSavedFilter(id: number, data: SavedFilterInput) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(savedFilters).set(data).where(eq(savedFilters.id, id));
+}
+
+export async function deleteSavedFilter(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(savedFilters).where(eq(savedFilters.id, id));
 }
 
 // ---- Tasks ----
@@ -188,7 +224,8 @@ export async function getTopLevelTasks(categoryId: number) {
 
 export async function replaceAllData(
   newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
-  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number }>
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number }>,
+  newSavedFilters?: Array<{ name: string; priority: "all" | "high" | "medium" | "low"; dueRange: "all" | "today" | "this_week" | "next_7_days" | "overdue" | "no_due_date"; categoryIndex: number | null; includeCompleted: boolean; sortOrder: number }>,
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -224,5 +261,19 @@ export async function replaceAllData(
     });
     const newId = (result as unknown as { insertId: number }).insertId;
     taskIdMap.set(task.tempId, newId);
+  }
+
+  if (newSavedFilters !== undefined) {
+    await db.delete(savedFilters);
+    for (const filter of newSavedFilters) {
+      await db.insert(savedFilters).values({
+        name: filter.name,
+        priority: filter.priority,
+        dueRange: filter.dueRange,
+        categoryId: filter.categoryIndex === null ? null : (catIds[filter.categoryIndex] ?? null),
+        includeCompleted: filter.includeCompleted,
+        sortOrder: filter.sortOrder,
+      });
+    }
   }
 }

@@ -16,6 +16,10 @@ const fixture = vi.hoisted(() => ({
     { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", done: false, collapsed: false, sortOrder: 1 },
     { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", done: false, collapsed: false, sortOrder: 2 },
   ],
+  filters: [
+    { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
+  ],
+  updateFilterMutate: vi.fn(),
 }));
 
 vi.mock("@/lib/trpc", () => ({
@@ -23,6 +27,7 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => ({
       categories: { list: { invalidate: vi.fn() } },
       tasks: { listAll: { invalidate: vi.fn() } },
+      filters: { list: { invalidate: vi.fn() } },
     }),
     categories: {
       list: { useQuery: () => ({ data: fixture.categories, isLoading: false }) },
@@ -31,6 +36,12 @@ vi.mock("@/lib/trpc", () => ({
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
       create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: vi.fn() }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
+    filters: {
+      list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
+      create: { useMutation: () => ({ mutate: vi.fn() }) },
+      update: { useMutation: () => ({ mutate: fixture.updateFilterMutate }) },
+      delete: { useMutation: () => ({ mutate: vi.fn() }) },
     },
     data: {
       export: { useQuery: () => ({ refetch: vi.fn() }) },
@@ -45,7 +56,13 @@ function renderDashboard(view: string) {
 }
 
 describe("Dashboard focused priority views", () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    fixture.updateFilterMutate.mockReset();
+    fixture.filters = [
+      { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
+    ];
+  });
   afterEach(() => {
     cleanup();
     window.history.replaceState({}, "", "/");
@@ -75,5 +92,62 @@ describe("Dashboard focused priority views", () => {
     expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
     expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
     expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+  });
+
+  it("applies a saved high-priority due-this-week filter to the main task list", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "High priority due this week" }));
+    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
+    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
+    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
+  });
+
+  it("loads a saved filter into edit mode", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
+    expect((screen.getByRole("textbox", { name: "Saved filter name" }) as HTMLInputElement).value).toBe("High priority due this week");
+    expect(screen.getByRole("button", { name: "Update filter" })).not.toBeNull();
+    expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
+  });
+
+  it("submits edited saved-filter values and exits edit mode after success", async () => {
+    fixture.updateFilterMutate.mockImplementation((_data: unknown, options?: { onSuccess?: () => void }) => options?.onSuccess?.());
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
+    const nameInput = screen.getByRole("textbox", { name: "Saved filter name" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "High tasks this week");
+    await user.click(screen.getByRole("button", { name: "Update filter" }));
+
+    expect(fixture.updateFilterMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, name: "High tasks this week", priority: "high", dueRange: "this_week" }),
+      expect.any(Object),
+    );
+    expect((screen.getByRole("textbox", { name: "Saved filter name" }) as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("button", { name: "Save filter" })).not.toBeNull();
+  });
+
+  it("renders refreshed saved-filter data after a successful edit", async () => {
+    fixture.updateFilterMutate.mockImplementation((data: { name: string }, options?: { onSuccess?: () => void }) => {
+      fixture.filters = [{ ...fixture.filters[0], name: data.name }];
+      options?.onSuccess?.();
+    });
+    const user = userEvent.setup();
+    const { rerender } = renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
+    const nameInput = screen.getByRole("textbox", { name: "Saved filter name" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Executive tasks this week");
+    await user.click(screen.getByRole("button", { name: "Update filter" }));
+    rerender(<ThemeProvider defaultTheme="light"><Dashboard /></ThemeProvider>);
+
+    const refreshed = screen.getByRole("button", { name: "Executive tasks this week" });
+    expect(refreshed).not.toBeNull();
+    await user.click(refreshed);
+    expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
   });
 });
