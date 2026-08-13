@@ -6,6 +6,10 @@ export type TodayTask = {
   sortOrder: number;
 };
 
+export type PrioritizedTask = TodayTask & {
+  priority: "high" | "medium" | "low";
+};
+
 export type TodayCategory = {
   id: number;
   kind: "urgent" | "normal";
@@ -33,6 +37,39 @@ export function isDueToday(dueAt: number | null | undefined, referenceDate = new
   return due.getFullYear() === referenceDate.getFullYear()
     && due.getMonth() === referenceDate.getMonth()
     && due.getDate() === referenceDate.getDate();
+}
+
+export function isDueWithinNextDays(
+  dueAt: number | null | undefined,
+  days = 7,
+  referenceDate = new Date(),
+): boolean {
+  if (!dueAt) return false;
+  const start = new Date(referenceDate);
+  start.setHours(0, 0, 0, 0);
+  const endExclusive = new Date(start);
+  endExclusive.setDate(endExclusive.getDate() + days);
+  return dueAt >= start.getTime() && dueAt < endExclusive.getTime();
+}
+
+const priorityRank: Record<PrioritizedTask["priority"], number> = { high: 0, medium: 1, low: 2 };
+
+export function selectUpcomingTasks<T extends PrioritizedTask>(
+  tasks: T[],
+  categories: TodayCategory[],
+  referenceDate = new Date(),
+): T[] {
+  const categoryOrder = new Map(categories.map((category) => [category.id, category.sortOrder]));
+  return tasks
+    .filter((task) => !task.done && isDueWithinNextDays(task.dueAt, 7, referenceDate))
+    .sort((a, b) => {
+      const priorityDifference = priorityRank[a.priority] - priorityRank[b.priority];
+      if (priorityDifference) return priorityDifference;
+      const dueDifference = (a.dueAt ?? 0) - (b.dueAt ?? 0);
+      if (dueDifference) return dueDifference;
+      const categoryDifference = (categoryOrder.get(a.categoryId) ?? 0) - (categoryOrder.get(b.categoryId) ?? 0);
+      return categoryDifference || a.sortOrder - b.sortOrder;
+    });
 }
 
 export function selectTodayTasks<T extends TodayTask>(

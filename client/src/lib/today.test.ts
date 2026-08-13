@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   dueAtFromLocalDateInput,
   isDueToday,
+  isDueWithinNextDays,
+  selectUpcomingTasks,
   selectTodayTasks,
   toLocalDateInputValue,
 } from "./today";
@@ -36,5 +38,22 @@ describe("Today view date helpers", () => {
     );
 
     expect(selected.map((task) => task.id)).toEqual([1, 2]);
+  });
+
+  it("selects unfinished tasks due in the next seven calendar days and sorts high priority first", () => {
+    const selected = selectUpcomingTasks(
+      [
+        { id: 1, categoryId: 1, dueAt: dueAtFromLocalDateInput("2026-08-14"), priority: "low" as const, done: false, sortOrder: 0 },
+        { id: 2, categoryId: 1, dueAt: dueAtFromLocalDateInput("2026-08-19"), priority: "high" as const, done: false, sortOrder: 1 },
+        { id: 3, categoryId: 1, dueAt: dueAtFromLocalDateInput("2026-08-20"), priority: "medium" as const, done: false, sortOrder: 2 },
+        { id: 4, categoryId: 1, dueAt: dueAtFromLocalDateInput("2026-08-15"), priority: "high" as const, done: true, sortOrder: 3 },
+      ],
+      [{ id: 1, kind: "normal", sortOrder: 0 }],
+      today,
+    );
+
+    expect(isDueWithinNextDays(dueAtFromLocalDateInput("2026-08-19"), 7, today)).toBe(true);
+    expect(isDueWithinNextDays(dueAtFromLocalDateInput("2026-08-20"), 7, today)).toBe(false);
+    expect(selected.map((task) => task.id)).toEqual([2, 1]);
   });
 });

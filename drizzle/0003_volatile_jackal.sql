@@ -1,0 +1,2 @@
+ALTER TABLE `tasks` ADD `priority` enum('high','medium','low') DEFAULT 'medium' NOT NULL;--> statement-breakpoint
+ALTER TABLE `tasks` ADD `recurrence` enum('none','daily','weekly','monthly') DEFAULT 'none' NOT NULL;

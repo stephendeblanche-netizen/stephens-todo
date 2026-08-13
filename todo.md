@@ -96,3 +96,11 @@
 - [x] Add due-date editing and a visible due-date indicator to task rows
 - [x] Create a dedicated Today view for unfinished urgent and due-today tasks
 - [x] Test task due-date filtering and Today view selection logic
+
+## Recurrence, Upcoming & Priority
+- [x] Add recurrence and priority fields to task storage and task APIs
+- [x] Advance a recurring task’s due date when it is completed
+- [x] Add daily, weekly, monthly, and no-repeat controls to each task
+- [x] Add independent high, medium, and low priority controls and indicators
+- [x] Create a shareable Upcoming view for unfinished tasks due in the next 7 days
+- [x] Test recurrence calculation, priority handling, and Upcoming selection logic

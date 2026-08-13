@@ -114,6 +114,12 @@ describe("tasks router", () => {
     expect(clearResult.success).toBe(true);
   });
 
+  it("updates priority and recurrence independently", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.tasks.update({ id: 1, priority: "high", recurrence: "weekly" });
+    expect(result.success).toBe(true);
+  });
+
   it("deletes a task", async () => {
     const caller = appRouter.createCaller(createCtx());
     const result = await caller.tasks.delete({ id: 1 });

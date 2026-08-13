@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   dueAtFromLocalDateInput,
   isDueToday,
+  selectUpcomingTasks,
   selectTodayTasks,
   toLocalDateInputValue,
 } from "@/lib/today";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import {
   ChevronDown,
   CalendarDays,
+  Flag,
   GripVertical,
   ListTodo,
   Moon,
@@ -32,6 +34,7 @@ import {
   FileDown,
   FileUp,
   StickyNote,
+  Repeat2,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -65,6 +68,23 @@ function catColor(cat: Category): string {
   if (cat.kind === "urgent") return "var(--status-critical)";
   return SLOT_COLORS[cat.colorIndex % 8] ?? SLOT_COLORS[0];
 }
+
+const PRIORITY_META = {
+  high: { label: "High", color: "var(--status-critical)" },
+  medium: { label: "Medium", color: "var(--slot-5)" },
+  low: { label: "Low", color: "var(--status-good)" },
+} as const;
+
+function priorityMeta(priority: Task["priority"]) {
+  return PRIORITY_META[priority] ?? PRIORITY_META.medium;
+}
+
+const RECURRENCE_LABELS: Record<Task["recurrence"], string> = {
+  none: "Does not repeat",
+  daily: "Repeats daily",
+  weekly: "Repeats weekly",
+  monthly: "Repeats monthly",
+};
 
 // ---- Tree builder ----
 type TaskNode = Task & { children: TaskNode[] };
@@ -325,9 +345,34 @@ function TaskItem({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           />
+          <span
+            className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
+            style={{ color: priorityMeta(node.priority).color, background: "var(--page-plane)" }}
+            title={`${priorityMeta(node.priority).label} priority`}
+          >
+            <Flag size={9} fill="currentColor" /> {priorityMeta(node.priority).label}
+          </span>
 
           {/* Toolbar */}
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: priorityMeta(node.priority).color, background: "transparent", border: "none" }}
+              title={`${priorityMeta(node.priority).label} priority`}
+              onClick={(e) => { e.stopPropagation(); setDueOpen(true); }}
+              type="button"
+            >
+              <Flag size={11} fill="currentColor" />
+            </button>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: node.recurrence === "none" ? "var(--text-muted)" : "var(--slot-1)", background: "transparent", border: "none" }}
+              title={RECURRENCE_LABELS[node.recurrence]}
+              onClick={(e) => { e.stopPropagation(); setDueOpen(true); }}
+              type="button"
+            >
+              <Repeat2 size={11} />
+            </button>
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: node.dueAt ? (isDueToday(node.dueAt) ? "var(--status-good)" : "var(--slot-1)") : "var(--text-muted)", background: "transparent", border: "none" }}
@@ -374,9 +419,9 @@ function TaskItem({
         </div>
         </div>
 
-        {/* Due date editor */}
+        {/* Task schedule and priority editor */}
         {dueOpen && (
-          <div className="ml-7 mb-1 mt-0.5 flex items-center gap-2">
+          <div className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2">
             <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Due</label>
             <input
               type="date"
@@ -396,6 +441,37 @@ function TaskItem({
                 Clear
               </button>
             )}
+            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Priority</label>
+            <div className="flex items-center gap-1 rounded-md border p-0.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
+              {(["high", "medium", "low"] as const).map((priority) => (
+                <button
+                  key={priority}
+                  className="rounded px-1.5 py-1 text-[10px] font-semibold"
+                  style={{
+                    color: priorityMeta(priority).color,
+                    background: node.priority === priority ? "var(--card-surface)" : "transparent",
+                    border: "none",
+                  }}
+                  type="button"
+                  onClick={() => onUpdate(node.id, { priority })}
+                >
+                  {priorityMeta(priority).label}
+                </button>
+              ))}
+            </div>
+            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Repeat</label>
+            <select
+              value={node.recurrence}
+              onChange={(event) => onUpdate(node.id, { recurrence: event.target.value as Task["recurrence"] })}
+              className="h-7 rounded-md border px-2 text-[11px] font-[inherit]"
+              style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+              aria-label={`Recurrence for ${node.text}`}
+            >
+              <option value="none">No repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
           </div>
         )}
 
@@ -479,7 +555,7 @@ function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps)
 
   return (
     <article
-      className="flex items-start gap-3 rounded-xl border px-3 py-3"
+      className="flex flex-wrap items-start gap-3 rounded-xl border px-3 py-3"
       style={{ background: "var(--card-surface)", borderColor: isUrgent ? "var(--status-critical)" : "var(--border-color)" }}
     >
       <input
@@ -508,6 +584,14 @@ function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps)
               DUE TODAY
             </span>
           )}
+          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: priorityMeta(task.priority).color, background: "var(--page-plane)" }}>
+            <Flag size={9} fill="currentColor" /> {priorityMeta(task.priority).label}
+          </span>
+          {task.recurrence !== "none" && (
+            <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]" style={{ color: "var(--slot-1)", background: "var(--page-plane)" }}>
+              <Repeat2 size={9} /> {task.recurrence}
+            </span>
+          )}
         </div>
         <input
           className="w-full border-none bg-transparent px-0 py-0.5 text-[14px] font-[inherit]"
@@ -521,7 +605,7 @@ function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps)
           aria-label="Task title"
         />
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
         <input
           type="date"
           value={toLocalDateInputValue(task.dueAt)}
@@ -530,6 +614,29 @@ function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps)
           style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
           aria-label={`Due date for ${task.text}`}
         />
+        <select
+          value={task.priority}
+          onChange={(event) => onUpdate(task.id, { priority: event.target.value as Task["priority"] })}
+          className="h-7 rounded-md border px-1.5 text-[11px] font-[inherit]"
+          style={{ color: priorityMeta(task.priority).color, background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          aria-label={`Priority for ${task.text}`}
+        >
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select
+          value={task.recurrence}
+          onChange={(event) => onUpdate(task.id, { recurrence: event.target.value as Task["recurrence"] })}
+          className="h-7 rounded-md border px-1.5 text-[11px] font-[inherit]"
+          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          aria-label={`Recurrence for ${task.text}`}
+        >
+          <option value="none">No repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
         <button
           className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent"
           style={{ color: "var(--text-muted)" }}
@@ -747,9 +854,10 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeCats, setActiveCats] = useState<Set<number> | null>(null);
-  const [activeView, setActiveView] = useState<"all" | "today">(() => {
+  const [activeView, setActiveView] = useState<"all" | "today" | "upcoming">(() => {
     if (typeof window === "undefined") return "all";
-    return new URLSearchParams(window.location.search).get("view") === "today" ? "today" : "all";
+    const view = new URLSearchParams(window.location.search).get("view");
+    return view === "today" || view === "upcoming" ? view : "all";
   });
   const [newCatName, setNewCatName] = useState("");
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
@@ -792,6 +900,10 @@ export default function Dashboard() {
     () => selectTodayTasks(tasksData, categoriesData),
     [tasksData, categoriesData],
   );
+  const upcomingTasks = useMemo(
+    () => selectUpcomingTasks(tasksData, categoriesData),
+    [tasksData, categoriesData],
+  );
 
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
@@ -828,7 +940,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!task) return;
-          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null });
+          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null, priority: task.priority, recurrence: task.recurrence });
           toast.success(`"${text}" restored.`);
         },
       },
@@ -854,7 +966,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           for (const t of doneTasks) {
-            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null });
+            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null, priority: t.priority, recurrence: t.recurrence });
           }
           toast.success(`${doneTasks.length} item${doneTasks.length !== 1 ? "s" : ""} restored.`);
         },
@@ -909,14 +1021,14 @@ export default function Dashboard() {
         const cats = (parsed.categories as Category[]).map((c, i) => ({
           name: c.name, kind: c.kind, colorIndex: c.colorIndex ?? i % 8, sortOrder: c.sortOrder ?? i, collapsed: c.collapsed ?? false,
         }));
-        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number }> = [];
+        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: Task["priority"]; recurrence: Task["recurrence"]; done: boolean; collapsed: boolean; sortOrder: number }> = [];
         if (parsed.tasks && Array.isArray(parsed.tasks)) {
           (parsed.tasks as Task[]).forEach((t, i) => {
             const catIdxReal = parsed.categories.findIndex((c: Category) => c.id === t.categoryId);
             flatTasks.push({
               tempId: `t${i}`, categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
               parentTempId: t.parentId ? `t${parsed.tasks.findIndex((pt: Task) => pt.id === t.parentId)}` : null,
-              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
+              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, priority: t.priority ?? "medium", recurrence: t.recurrence ?? "none", done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
             });
           });
         }
@@ -936,10 +1048,10 @@ export default function Dashboard() {
     });
   }, [categoriesData]);
 
-  const handleViewChange = useCallback((view: "all" | "today") => {
+  const handleViewChange = useCallback((view: "all" | "today" | "upcoming") => {
     setActiveView(view);
     const url = new URL(window.location.href);
-    if (view === "today") url.searchParams.set("view", "today");
+    if (view !== "all") url.searchParams.set("view", view);
     else url.searchParams.delete("view");
     window.history.replaceState({}, "", url);
   }, []);
@@ -1103,6 +1215,14 @@ export default function Dashboard() {
             >
               <CalendarDays size={13} /> Today <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{todayTasks.length}</span>
             </button>
+            <button
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
+              style={{ background: activeView === "upcoming" ? "var(--page-plane)" : "transparent", color: activeView === "upcoming" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
+              onClick={() => handleViewChange("upcoming")}
+              type="button"
+            >
+              <CalendarDays size={13} /> Upcoming <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{upcomingTasks.length}</span>
+            </button>
           </nav>
 
           {/* Controls */}
@@ -1212,6 +1332,39 @@ export default function Dashboard() {
               ) : (
                 <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
                   Nothing is urgent or due today. You have a clear runway.
+                </div>
+              )}
+            </section>
+          )}
+
+          {!isLoading && activeView === "upcoming" && (
+            <section className="rounded-2xl border p-4" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="m-0 text-[17px] font-semibold" style={{ color: "var(--text-primary)" }}>Upcoming</h2>
+                  <p className="m-0 mt-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+                    Unfinished tasks due over the next 7 days, ranked by priority and due date
+                  </p>
+                </div>
+                <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
+                  {upcomingTasks.length} task{upcomingTasks.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {upcomingTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {upcomingTasks.map((task) => (
+                    <TodayTaskRow
+                      key={task.id}
+                      task={task}
+                      category={categoriesData.find((category) => category.id === task.categoryId)}
+                      onUpdate={handleUpdateTask}
+                      onDelete={handleDeleteTask}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
+                  No unfinished tasks are due in the next 7 days.
                 </div>
               )}
             </section>

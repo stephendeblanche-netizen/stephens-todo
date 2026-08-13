@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, categories, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
+import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _seeded = false;
@@ -103,7 +104,7 @@ export async function getAllTasks() {
   return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
@@ -112,6 +113,8 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
     text: data.text,
     note: "",
     dueAt: data.dueAt ?? null,
+    priority: data.priority ?? "medium",
+    recurrence: data.recurrence ?? "none",
     done: false,
     collapsed: false,
     sortOrder: data.sortOrder,
@@ -119,9 +122,23 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
   return (result as unknown as { insertId: number }).insertId;
 }
 
-export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
+export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  if (!existing) return;
+
+  // Completing a repeating task means it is ready for its next occurrence.
+  if (data.done === true && (data.recurrence ?? existing.recurrence) !== "none") {
+    const recurrence = data.recurrence ?? existing.recurrence;
+    await db.update(tasks).set({
+      ...data,
+      dueAt: nextRecurringDueAt(data.dueAt ?? existing.dueAt, recurrence),
+      done: false,
+    }).where(eq(tasks.id, id));
+    return;
+  }
+
   await db.update(tasks).set(data).where(eq(tasks.id, id));
 }
 
@@ -171,7 +188,7 @@ export async function getTopLevelTasks(categoryId: number) {
 
 export async function replaceAllData(
   newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
-  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number }>
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; done: boolean; collapsed: boolean; sortOrder: number }>
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -199,6 +216,8 @@ export async function replaceAllData(
       text: task.text,
       note: task.note,
       dueAt: task.dueAt,
+      priority: task.priority,
+      recurrence: task.recurrence,
       done: task.done,
       collapsed: task.collapsed,
       sortOrder: task.sortOrder,

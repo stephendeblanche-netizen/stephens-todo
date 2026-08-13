@@ -94,6 +94,8 @@ export const appRouter = router({
         text: z.string().default("New item"),
         sortOrder: z.number().int().default(0),
         dueAt: z.number().int().nullable().optional(),
+        priority: z.enum(["high", "medium", "low"]).optional(),
+        recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
       }))
       .mutation(async ({ input }) => {
         const id = await createTask(input);
@@ -106,6 +108,8 @@ export const appRouter = router({
         text: z.string().optional(),
         note: z.string().optional(),
         dueAt: z.number().int().nullable().optional(),
+        priority: z.enum(["high", "medium", "low"]).optional(),
+        recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
         done: z.boolean().optional(),
         collapsed: z.boolean().optional(),
         sortOrder: z.number().int().optional(),
@@ -237,6 +241,8 @@ export const appRouter = router({
           text: z.string(),
           note: z.string(),
           dueAt: z.number().int().nullable().optional().default(null),
+          priority: z.enum(["high", "medium", "low"]).optional().default("medium"),
+          recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional().default("none"),
           done: z.boolean(),
           collapsed: z.boolean(),
           sortOrder: z.number().int(),

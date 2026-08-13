@@ -40,6 +40,10 @@ export const tasks = mysqlTable("tasks", {
   note: varchar("note", { length: 2000 }).default("").notNull(),
   /** UTC Unix timestamp in milliseconds; null means no date has been set. */
   dueAt: bigint("dueAt", { mode: "number" }),
+  /** Independent task importance; distinct from membership of the URGENT category. */
+  priority: mysqlEnum("priority", ["high", "medium", "low"]).default("medium").notNull(),
+  /** When completed, recurring tasks are advanced to their next due date instead of archived. */
+  recurrence: mysqlEnum("recurrence", ["none", "daily", "weekly", "monthly"]).default("none").notNull(),
   done: boolean("done").default(false).notNull(),
   collapsed: boolean("collapsed").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
