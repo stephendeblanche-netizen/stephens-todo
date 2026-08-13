@@ -459,8 +459,11 @@ function TaskItem({
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: node.note ? "var(--slot-1)" : "var(--text-muted)", background: "transparent", border: "none" }}
-              title={node.note ? "Edit note" : "Add note"}
+              title={node.note ? (noteOpen ? "Collapse note" : "Show note") : "Add note"}
               onClick={(e) => { e.stopPropagation(); setNoteOpen((v) => !v); }}
+              aria-label={node.note ? `Toggle note editor for ${node.text}` : `Add note for ${node.text}`}
+              aria-expanded={noteOpen}
+              aria-controls={`note-panel-${node.id}`}
               type="button"
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--slot-1)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = node.note ? "var(--slot-1)" : "var(--text-muted)"; }}
@@ -494,6 +497,20 @@ function TaskItem({
         </div>
 
         <TaskNestDropTarget taskId={node.id} taskText={node.text} tasks={allCatTasks} />
+
+        {node.note && !noteOpen && (
+          <button
+            className="ml-7 mt-0.5 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-[inherit]"
+            style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+            type="button"
+            onClick={() => setNoteOpen(true)}
+            aria-label={`Show notes for ${node.text}`}
+            aria-expanded={false}
+            aria-controls={`note-panel-${node.id}`}
+          >
+            <StickyNote size={10} /> Show notes
+          </button>
+        )}
 
         {/* Task schedule and priority editor */}
         {dueOpen && (
@@ -553,15 +570,30 @@ function TaskItem({
 
         {/* Note box */}
         {noteOpen && (
-          <div className="ml-7 mt-0.5 mb-1">
+          <div id={`note-panel-${node.id}`} className="ml-7 mt-1 mb-1 max-w-md rounded-lg border p-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                <StickyNote size={10} /> Notes
+              </span>
+              <button
+                className="border-none bg-transparent px-1 py-0.5 text-[10.5px] font-[inherit]"
+                style={{ color: "var(--text-muted)" }}
+                type="button"
+                onClick={() => setNoteOpen(false)}
+                aria-label={`Collapse notes for ${node.text}`}
+              >
+                Collapse
+              </button>
+            </div>
             <textarea
               id={`note-${node.id}`}
-              className="w-full max-w-md text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
-              style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+              className="w-full text-[12.5px] border rounded-lg px-2.5 py-1.5 resize-y min-h-[40px] font-[inherit] focus:outline-none"
+              style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
               placeholder="Add a note…"
               defaultValue={node.note}
               onBlur={(e) => onUpdate(node.id, { note: e.target.value })}
               onClick={(e) => e.stopPropagation()}
+              aria-label={`Notes for ${node.text}`}
             />
             {node.note && (
               <button
@@ -633,6 +665,7 @@ interface TodayTaskRowProps {
 function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: TodayTaskRowProps) {
   const dueToday = isDueToday(task.dueAt);
   const isUrgent = category?.kind === "urgent";
+  const [noteOpen, setNoteOpen] = useState(false);
 
   return (
     <article
@@ -729,6 +762,18 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: Tod
           {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
         </select>
         <button
+          className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
+          style={{ color: task.note ? "var(--slot-1)" : "var(--text-muted)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          type="button"
+          title={task.note ? (noteOpen ? "Collapse notes" : "Show notes") : "Add note"}
+          onClick={() => setNoteOpen((value) => !value)}
+          aria-label={task.note ? (noteOpen ? `Collapse notes for ${task.text}` : `Show notes for ${task.text}`) : `Add note for ${task.text}`}
+          aria-expanded={noteOpen}
+          aria-controls={`focused-note-panel-${task.id}`}
+        >
+          <StickyNote size={11} /> Notes
+        </button>
+        <button
           className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent"
           style={{ color: "var(--text-muted)" }}
           type="button"
@@ -738,6 +783,36 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: Tod
           <Trash2 size={13} />
         </button>
       </div>
+      {noteOpen && (
+        <div id={`focused-note-panel-${task.id}`} className="w-full rounded-lg border p-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+              <StickyNote size={10} /> Notes
+            </span>
+            <button className="border-none bg-transparent px-1 py-0.5 text-[10.5px] font-[inherit]" style={{ color: "var(--text-muted)" }} type="button" onClick={() => setNoteOpen(false)}>
+              Collapse
+            </button>
+          </div>
+          <textarea
+            className="min-h-[56px] w-full resize-y rounded-lg border px-2.5 py-1.5 text-[12.5px] font-[inherit] focus:outline-none"
+            style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+            placeholder="Add a note…"
+            defaultValue={task.note}
+            onBlur={(event) => onUpdate(task.id, { note: event.target.value })}
+            aria-label={`Notes for ${task.text}`}
+          />
+          {task.note && (
+            <button
+              className="mt-1 inline-flex items-center gap-1 border-none bg-transparent px-0 py-0.5 text-[10.5px] font-[inherit]"
+              style={{ color: "var(--text-muted)" }}
+              type="button"
+              onClick={() => { onUpdate(task.id, { note: "" }); setNoteOpen(false); }}
+            >
+              <Trash2 size={10} /> Clear note
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 }

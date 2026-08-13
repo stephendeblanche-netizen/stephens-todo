@@ -144,3 +144,9 @@
 - [x] Verify drag-to-nest behavior and provide clear feedback when dropping onto a task
 - [x] Test Direct Report filtering and task re-parenting behavior
 - [x] Test the explicit drag-to-nest drop target’s re-parenting payload and cycle rejection
+
+## Task Notes Visibility
+- [x] Add a clear expand/collapse Notes control for tasks with notes
+- [x] Preserve inline note editing and note deletion when expanded
+- [x] Test note visibility toggling and responsive task-row behavior
+- [x] Add narrow-layout interaction coverage for task note controls

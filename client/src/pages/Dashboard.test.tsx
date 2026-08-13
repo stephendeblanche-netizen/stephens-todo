@@ -12,7 +12,7 @@ const fixture = vi.hoisted(() => ({
     { id: 2, name: "QDR", kind: "normal", colorIndex: 1, sortOrder: 1, collapsed: false },
   ],
   tasks: [
-    { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
+    { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "Important detail", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
     { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
     { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
   ],
@@ -181,6 +181,30 @@ describe("Dashboard focused priority views", () => {
     expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
     expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
     expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+  });
+
+  it("expands and collapses a task note beneath the task row", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "Show notes for Urgent high today" }));
+    expect((screen.getByRole("textbox", { name: "Notes for Urgent high today" }) as HTMLTextAreaElement).value).toBe("Important detail");
+    await user.click(screen.getByRole("button", { name: "Collapse notes for Urgent high today" }));
+    expect(screen.queryByRole("textbox", { name: "Notes for Urgent high today" })).toBeNull();
+  });
+
+  it("keeps task note controls accessible at a narrow mobile viewport", async () => {
+    const user = userEvent.setup();
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    window.dispatchEvent(new Event("resize"));
+
+    renderDashboard("all");
+    await user.click(screen.getByRole("button", { name: "Show notes for Urgent high today" }));
+    expect(screen.getByRole("textbox", { name: "Notes for Urgent high today" })).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "Collapse notes for Urgent high today" }));
+    expect(screen.queryByRole("textbox", { name: "Notes for Urgent high today" })).toBeNull();
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
   });
 
   it("adds a Direct Report from the management section", async () => {
