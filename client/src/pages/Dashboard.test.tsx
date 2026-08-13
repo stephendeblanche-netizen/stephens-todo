@@ -217,4 +217,25 @@ describe("Dashboard focused priority views", () => {
       expect.any(Object),
     );
   });
+
+  it("keeps the bottom-positioned Direct Reports manager usable at a narrow viewport", async () => {
+    const user = userEvent.setup();
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    window.dispatchEvent(new Event("resize"));
+
+    renderDashboard("all");
+    const manager = screen.getByRole("region", { name: "Direct Reports manager" });
+    const footer = screen.getByRole("contentinfo");
+    expect(manager.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    await user.type(screen.getByRole("textbox", { name: "New Direct Report name" }), "Morgan Lee");
+    await user.click(screen.getByRole("button", { name: "Add Direct Report" }));
+    expect(fixture.createDirectReportMutate).toHaveBeenCalledWith(
+      { name: "Morgan Lee", sortOrder: 1 },
+      expect.any(Object),
+    );
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+  });
 });

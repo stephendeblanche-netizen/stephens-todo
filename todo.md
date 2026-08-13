@@ -150,3 +150,9 @@
 - [x] Preserve inline note editing and note deletion when expanded
 - [x] Test note visibility toggling and responsive task-row behavior
 - [x] Add narrow-layout interaction coverage for task note controls
+
+## Direct Reports Layout
+- [x] Move the Direct Reports management section to the bottom of the dashboard
+- [x] Verify its desktop and mobile layout remains usable
+- [x] Verify the relocated Direct Reports controls at the bottom of the mobile layout
+- [x] Add narrow-viewport interaction coverage for the bottom-positioned Direct Reports manager

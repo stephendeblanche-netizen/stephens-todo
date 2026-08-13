@@ -1723,55 +1723,6 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
-            <div className="mb-2">
-              <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Direct Reports</h2>
-              <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Maintain the people available in each task’s Accountable dropdown. N/A remains available for every task.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <input
-                className="min-w-[180px] flex-1 rounded-lg border px-3 py-2 text-[12px] font-[inherit]"
-                style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
-                value={newDirectReportName}
-                onChange={(event) => setNewDirectReportName(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") handleAddDirectReport(); }}
-                placeholder="Add Direct Report…"
-                aria-label="New Direct Report name"
-              />
-              <button className="rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleAddDirectReport}>
-                Add Direct Report
-              </button>
-            </div>
-            {directReports.length > 0 ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {directReports.map((report) => {
-                  const assignedCount = tasksData.filter((task) => task.accountableDirectReportId === report.id).length;
-                  return (
-                    <div key={report.id} className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
-                      <input
-                        className="min-w-0 flex-1 border-none bg-transparent px-1 text-[12px] font-[inherit]"
-                        style={{ color: "var(--text-primary)", outline: "none" }}
-                        defaultValue={report.name}
-                        onBlur={(event) => {
-                          const name = event.target.value.trim() || report.name;
-                          event.target.value = name;
-                          if (name !== report.name) updateDirectReportMut.mutate({ id: report.id, name });
-                        }}
-                        aria-label={`Direct Report ${report.name}`}
-                      />
-                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{assignedCount} task{assignedCount === 1 ? "" : "s"}</span>
-                      <button className="flex h-6 w-6 items-center justify-center rounded-full border-none bg-transparent" style={{ color: "var(--text-muted)" }} type="button" title={`Delete ${report.name}`} aria-label={`Delete ${report.name}`} onClick={() => handleDeleteDirectReport(report)}>
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Direct Reports yet. Tasks currently use N/A until you add someone.</p>
-            )}
-          </section>
-
           {/* Add category */}
           <div className="flex gap-2 mb-4 items-center">
             <input
@@ -2037,6 +1988,55 @@ export default function Dashboard() {
               )}
             </SortableContext>
           )}
+
+          <section aria-label="Direct Reports manager" className="mt-6 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+            <div className="mb-2">
+              <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Direct Reports</h2>
+              <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Maintain the people available in each task’s Accountable dropdown. N/A remains available for every task.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="min-w-[180px] flex-1 rounded-lg border px-3 py-2 text-[12px] font-[inherit]"
+                style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }}
+                value={newDirectReportName}
+                onChange={(event) => setNewDirectReportName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") handleAddDirectReport(); }}
+                placeholder="Add Direct Report…"
+                aria-label="New Direct Report name"
+              />
+              <button className="rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleAddDirectReport}>
+                Add Direct Report
+              </button>
+            </div>
+            {directReports.length > 0 ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {directReports.map((report) => {
+                  const assignedCount = tasksData.filter((task) => task.accountableDirectReportId === report.id).length;
+                  return (
+                    <div key={report.id} className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
+                      <input
+                        className="min-w-0 flex-1 border-none bg-transparent px-1 text-[12px] font-[inherit]"
+                        style={{ color: "var(--text-primary)", outline: "none" }}
+                        defaultValue={report.name}
+                        onBlur={(event) => {
+                          const name = event.target.value.trim() || report.name;
+                          event.target.value = name;
+                          if (name !== report.name) updateDirectReportMut.mutate({ id: report.id, name });
+                        }}
+                        aria-label={`Direct Report ${report.name}`}
+                      />
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{assignedCount} task{assignedCount === 1 ? "" : "s"}</span>
+                      <button className="flex h-6 w-6 items-center justify-center rounded-full border-none bg-transparent" style={{ color: "var(--text-muted)" }} type="button" title={`Delete ${report.name}`} aria-label={`Delete ${report.name}`} onClick={() => handleDeleteDirectReport(report)}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Direct Reports yet. Tasks currently use N/A until you add someone.</p>
+            )}
+          </section>
 
           <footer className="text-center text-[11.5px] mt-6" style={{ color: "var(--text-muted)" }}>
             Stephen's To-Do Dashboard · Data saved server-side · accessible from any device
