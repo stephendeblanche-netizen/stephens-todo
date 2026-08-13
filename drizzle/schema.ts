@@ -1,4 +1,4 @@
-import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 // Core user table backing auth flow
 export const users = mysqlTable("users", {
@@ -38,6 +38,8 @@ export const tasks = mysqlTable("tasks", {
   parentId: int("parentId"), // null = top-level task
   text: text("text").notNull(),
   note: varchar("note", { length: 2000 }).default("").notNull(),
+  /** UTC Unix timestamp in milliseconds; null means no date has been set. */
+  dueAt: bigint("dueAt", { mode: "number" }),
   done: boolean("done").default(false).notNull(),
   collapsed: boolean("collapsed").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),

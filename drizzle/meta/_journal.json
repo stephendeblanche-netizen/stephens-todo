@@ -15,6 +15,13 @@
       "when": 1785992840290,
       "tag": "0001_superb_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786599431863,
+      "tag": "0002_dapper_loki",
+      "breakpoints": true
     }
   ]
 }

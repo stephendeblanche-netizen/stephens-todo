@@ -106,6 +106,14 @@ describe("tasks router", () => {
     expect(result.success).toBe(true);
   });
 
+  it("sets and clears a task due date", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const setResult = await caller.tasks.update({ id: 1, dueAt: new Date("2026-08-13T12:00:00").getTime() });
+    const clearResult = await caller.tasks.update({ id: 1, dueAt: null });
+    expect(setResult.success).toBe(true);
+    expect(clearResult.success).toBe(true);
+  });
+
   it("deletes a task", async () => {
     const caller = appRouter.createCaller(createCtx());
     const result = await caller.tasks.delete({ id: 1 });

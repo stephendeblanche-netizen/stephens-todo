@@ -103,7 +103,7 @@ export async function getAllTasks() {
   return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
@@ -111,6 +111,7 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
     parentId: data.parentId,
     text: data.text,
     note: "",
+    dueAt: data.dueAt ?? null,
     done: false,
     collapsed: false,
     sortOrder: data.sortOrder,
@@ -118,7 +119,7 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
   return (result as unknown as { insertId: number }).insertId;
 }
 
-export async function updateTask(id: number, data: Partial<{ text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
+export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tasks).set(data).where(eq(tasks.id, id));
@@ -170,7 +171,7 @@ export async function getTopLevelTasks(categoryId: number) {
 
 export async function replaceAllData(
   newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
-  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number }>
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number }>
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -197,6 +198,7 @@ export async function replaceAllData(
       parentId,
       text: task.text,
       note: task.note,
+      dueAt: task.dueAt,
       done: task.done,
       collapsed: task.collapsed,
       sortOrder: task.sortOrder,

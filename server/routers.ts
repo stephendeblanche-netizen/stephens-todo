@@ -93,6 +93,7 @@ export const appRouter = router({
         parentId: z.number().int().optional(),
         text: z.string().default("New item"),
         sortOrder: z.number().int().default(0),
+        dueAt: z.number().int().nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const id = await createTask(input);
@@ -104,6 +105,7 @@ export const appRouter = router({
         id: z.number().int(),
         text: z.string().optional(),
         note: z.string().optional(),
+        dueAt: z.number().int().nullable().optional(),
         done: z.boolean().optional(),
         collapsed: z.boolean().optional(),
         sortOrder: z.number().int().optional(),
@@ -234,6 +236,7 @@ export const appRouter = router({
           parentTempId: z.string().nullable(),
           text: z.string(),
           note: z.string(),
+          dueAt: z.number().int().nullable().optional().default(null),
           done: z.boolean(),
           collapsed: z.boolean(),
           sortOrder: z.number().int(),

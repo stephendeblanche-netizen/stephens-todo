@@ -10,12 +10,20 @@ import {
 import { useSwipeDeleteConfirmation } from "@/hooks/useSwipeDeleteConfirmation";
 import { SwipeDeleteConfirmationDialog } from "@/components/SwipeDeleteConfirmationDialog";
 import { Switch } from "@/components/ui/switch";
+import {
+  dueAtFromLocalDateInput,
+  isDueToday,
+  selectTodayTasks,
+  toLocalDateInputValue,
+} from "@/lib/today";
 import type { Category, Task } from "../../../drizzle/schema";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ChevronDown,
+  CalendarDays,
   GripVertical,
+  ListTodo,
   Moon,
   Plus,
   Search,
@@ -114,6 +122,7 @@ function TaskItem({
   isDragOverlay = false,
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
+  const [dueOpen, setDueOpen] = useState(Boolean(node.dueAt));
   const [hovered, setHovered] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeOpen, setSwipeOpen] = useState(false);
@@ -321,6 +330,15 @@ function TaskItem({
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
+              style={{ color: node.dueAt ? (isDueToday(node.dueAt) ? "var(--status-good)" : "var(--slot-1)") : "var(--text-muted)", background: "transparent", border: "none" }}
+              title={node.dueAt ? `Due ${toLocalDateInputValue(node.dueAt)}` : "Set due date"}
+              onClick={(e) => { e.stopPropagation(); setDueOpen((value) => !value); }}
+              type="button"
+            >
+              <CalendarDays size={11} />
+            </button>
+            <button
+              className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: node.note ? "var(--slot-1)" : "var(--text-muted)", background: "transparent", border: "none" }}
               title={node.note ? "Edit note" : "Add note"}
               onClick={(e) => { e.stopPropagation(); setNoteOpen((v) => !v); }}
@@ -355,6 +373,31 @@ function TaskItem({
           </span>
         </div>
         </div>
+
+        {/* Due date editor */}
+        {dueOpen && (
+          <div className="ml-7 mb-1 mt-0.5 flex items-center gap-2">
+            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Due</label>
+            <input
+              type="date"
+              value={toLocalDateInputValue(node.dueAt)}
+              onChange={(event) => onUpdate(node.id, { dueAt: dueAtFromLocalDateInput(event.target.value) })}
+              className="h-7 rounded-md border px-2 text-[11px] font-[inherit]"
+              style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+              aria-label={`Due date for ${node.text}`}
+            />
+            {node.dueAt && (
+              <button
+                className="border-none bg-transparent px-1 text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+                type="button"
+                onClick={() => onUpdate(node.id, { dueAt: null })}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Note box */}
         {noteOpen && (
@@ -419,6 +462,85 @@ function TaskItem({
         )}
       </li>
     </>
+  );
+}
+
+// ---- TodayTaskRow ----
+interface TodayTaskRowProps {
+  task: Task;
+  category?: Category;
+  onUpdate: (id: number, data: Partial<Task>) => void;
+  onDelete: (id: number, text: string) => void;
+}
+
+function TodayTaskRow({ task, category, onUpdate, onDelete }: TodayTaskRowProps) {
+  const dueToday = isDueToday(task.dueAt);
+  const isUrgent = category?.kind === "urgent";
+
+  return (
+    <article
+      className="flex items-start gap-3 rounded-xl border px-3 py-3"
+      style={{ background: "var(--card-surface)", borderColor: isUrgent ? "var(--status-critical)" : "var(--border-color)" }}
+    >
+      <input
+        type="checkbox"
+        checked={task.done}
+        onChange={(event) => onUpdate(task.id, { done: event.target.checked })}
+        className="mt-1 h-4 w-4 flex-shrink-0 cursor-pointer"
+        style={{ accentColor: "var(--status-good)" }}
+        aria-label={`Mark ${task.text} complete`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          {category && (
+            <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: "var(--text-secondary)" }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: catColor(category) }} />
+              {category.name}
+            </span>
+          )}
+          {isUrgent && (
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--status-critical)", background: "var(--drop-wash)" }}>
+              URGENT
+            </span>
+          )}
+          {dueToday && (
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--status-good)", background: "var(--page-plane)" }}>
+              DUE TODAY
+            </span>
+          )}
+        </div>
+        <input
+          className="w-full border-none bg-transparent px-0 py-0.5 text-[14px] font-[inherit]"
+          style={{ color: "var(--text-primary)", outline: "none" }}
+          defaultValue={task.text}
+          onBlur={(event) => {
+            const text = event.target.value.trim() || task.text;
+            event.target.value = text;
+            if (text !== task.text) onUpdate(task.id, { text });
+          }}
+          aria-label="Task title"
+        />
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <input
+          type="date"
+          value={toLocalDateInputValue(task.dueAt)}
+          onChange={(event) => onUpdate(task.id, { dueAt: dueAtFromLocalDateInput(event.target.value) })}
+          className="h-7 max-w-[130px] rounded-md border px-1.5 text-[11px] font-[inherit]"
+          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          aria-label={`Due date for ${task.text}`}
+        />
+        <button
+          className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent"
+          style={{ color: "var(--text-muted)" }}
+          type="button"
+          title="Delete task"
+          onClick={() => onDelete(task.id, task.text)}
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -625,6 +747,10 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeCats, setActiveCats] = useState<Set<number> | null>(null);
+  const [activeView, setActiveView] = useState<"all" | "today">(() => {
+    if (typeof window === "undefined") return "all";
+    return new URLSearchParams(window.location.search).get("view") === "today" ? "today" : "all";
+  });
   const [newCatName, setNewCatName] = useState("");
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -662,6 +788,11 @@ export default function Dashboard() {
     return { total, done, urgent: urgentTasks.length, categories: categoriesData.length };
   }, [categoriesData, tasksData]);
 
+  const todayTasks = useMemo(
+    () => selectTodayTasks(tasksData, categoriesData),
+    [tasksData, categoriesData],
+  );
+
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
     updateCatMut.mutate({ id, ...data });
@@ -697,7 +828,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!task) return;
-          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder });
+          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null });
           toast.success(`"${text}" restored.`);
         },
       },
@@ -723,7 +854,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           for (const t of doneTasks) {
-            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder });
+            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null });
           }
           toast.success(`${doneTasks.length} item${doneTasks.length !== 1 ? "s" : ""} restored.`);
         },
@@ -778,14 +909,14 @@ export default function Dashboard() {
         const cats = (parsed.categories as Category[]).map((c, i) => ({
           name: c.name, kind: c.kind, colorIndex: c.colorIndex ?? i % 8, sortOrder: c.sortOrder ?? i, collapsed: c.collapsed ?? false,
         }));
-        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; done: boolean; collapsed: boolean; sortOrder: number }> = [];
+        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; done: boolean; collapsed: boolean; sortOrder: number }> = [];
         if (parsed.tasks && Array.isArray(parsed.tasks)) {
           (parsed.tasks as Task[]).forEach((t, i) => {
             const catIdxReal = parsed.categories.findIndex((c: Category) => c.id === t.categoryId);
             flatTasks.push({
               tempId: `t${i}`, categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
               parentTempId: t.parentId ? `t${parsed.tasks.findIndex((pt: Task) => pt.id === t.parentId)}` : null,
-              text: t.text, note: t.note ?? "", done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
+              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
             });
           });
         }
@@ -804,6 +935,14 @@ export default function Dashboard() {
       return next;
     });
   }, [categoriesData]);
+
+  const handleViewChange = useCallback((view: "all" | "today") => {
+    setActiveView(view);
+    const url = new URL(window.location.href);
+    if (view === "today") url.searchParams.set("view", "today");
+    else url.searchParams.delete("view");
+    window.history.replaceState({}, "", url);
+  }, []);
 
   // ---- dnd-kit sensors — pointer + touch, with 8px activation distance ----
   const sensors = useSensors(
@@ -947,6 +1086,25 @@ export default function Dashboard() {
             ))}
           </div>
 
+          <nav className="mb-4 inline-flex items-center gap-1 rounded-xl border p-1" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label="Task views">
+            <button
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
+              style={{ background: activeView === "all" ? "var(--page-plane)" : "transparent", color: activeView === "all" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
+              onClick={() => handleViewChange("all")}
+              type="button"
+            >
+              <ListTodo size={13} /> All tasks
+            </button>
+            <button
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
+              style={{ background: activeView === "today" ? "var(--page-plane)" : "transparent", color: activeView === "today" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
+              onClick={() => handleViewChange("today")}
+              type="button"
+            >
+              <CalendarDays size={13} /> Today <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{todayTasks.length}</span>
+            </button>
+          </nav>
+
           {/* Controls */}
           <div className="flex gap-2.5 flex-wrap mb-3.5 items-center">
             <div className="flex-1 min-w-[200px] relative">
@@ -1026,7 +1184,40 @@ export default function Dashboard() {
             <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>Loading your tasks…</div>
           )}
 
-          {!isLoading && (
+          {!isLoading && activeView === "today" && (
+            <section className="rounded-2xl border p-4" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="m-0 text-[17px] font-semibold" style={{ color: "var(--text-primary)" }}>Today</h2>
+                  <p className="m-0 mt-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+                    Unfinished tasks that are urgent or due today · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long" })}
+                  </p>
+                </div>
+                <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
+                  {todayTasks.length} task{todayTasks.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {todayTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {todayTasks.map((task) => (
+                    <TodayTaskRow
+                      key={task.id}
+                      task={task}
+                      category={categoriesData.find((category) => category.id === task.categoryId)}
+                      onUpdate={handleUpdateTask}
+                      onDelete={handleDeleteTask}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
+                  Nothing is urgent or due today. You have a clear runway.
+                </div>
+              )}
+            </section>
+          )}
+
+          {!isLoading && activeView === "all" && (
             <SortableContext
               items={sortedCats.filter((c) => effectiveActiveCats.has(c.id)).map((c) => catDragId(c.id))}
               strategy={verticalListSortingStrategy}

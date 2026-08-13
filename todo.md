@@ -90,3 +90,9 @@
 - [x] Add component tests for confirmed and immediate swipe deletion actions
 - [x] Test persisted swipe confirmation preference handling
 - [x] Test the rendered confirmation dialog’s confirm and cancel actions
+
+## Today View & Due Dates
+- [x] Add a nullable due-date field to tasks and support it in task mutations
+- [x] Add due-date editing and a visible due-date indicator to task rows
+- [x] Create a dedicated Today view for unfinished urgent and due-today tasks
+- [x] Test task due-date filtering and Today view selection logic
