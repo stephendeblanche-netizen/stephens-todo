@@ -7,6 +7,7 @@ import {
   selectTodayTasks,
   toLocalDateInputValue,
 } from "./today";
+import { filterTasksByPriority } from "./calendar";
 
 const today = new Date("2026-08-13T09:00:00");
 
@@ -55,5 +56,18 @@ describe("Today view date helpers", () => {
     expect(isDueWithinNextDays(dueAtFromLocalDateInput("2026-08-19"), 7, today)).toBe(true);
     expect(isDueWithinNextDays(dueAtFromLocalDateInput("2026-08-20"), 7, today)).toBe(false);
     expect(selected.map((task) => task.id)).toEqual([2, 1]);
+  });
+
+  it("applies the same priority filter to Today, Upcoming, and High quick view selections", () => {
+    const tasks = [
+      { id: 1, categoryId: 1, dueAt: dueAtFromLocalDateInput("2026-08-13"), priority: "high" as const, done: false, sortOrder: 0 },
+      { id: 2, categoryId: 2, dueAt: dueAtFromLocalDateInput("2026-08-14"), priority: "medium" as const, done: false, sortOrder: 1 },
+      { id: 3, categoryId: 2, dueAt: dueAtFromLocalDateInput("2026-08-15"), priority: "high" as const, done: false, sortOrder: 2 },
+    ];
+    const categories = [{ id: 1, kind: "urgent" as const, sortOrder: 0 }, { id: 2, kind: "normal" as const, sortOrder: 1 }];
+
+    expect(filterTasksByPriority(selectTodayTasks(tasks, categories, today), "high").map((task) => task.id)).toEqual([1]);
+    expect(filterTasksByPriority(selectUpcomingTasks(tasks, categories, today), "high").map((task) => task.id)).toEqual([1, 3]);
+    expect(filterTasksByPriority(tasks, "high").filter((task) => !task.done).map((task) => task.id)).toEqual([1, 3]);
   });
 });

@@ -17,11 +17,14 @@ import {
   selectTodayTasks,
   toLocalDateInputValue,
 } from "@/lib/today";
+import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } from "@/lib/calendar";
 import type { Category, Task } from "../../../drizzle/schema";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CalendarDays,
   Flag,
   GripVertical,
@@ -99,6 +102,11 @@ function matchesSearch(node: TaskNode, q: string): boolean {
   if (node.text.toLowerCase().includes(q) || node.note.toLowerCase().includes(q)) return true;
   return node.children.some((c) => matchesSearch(c, q));
 }
+function matchesPriority(node: TaskNode, priority: "all" | Task["priority"]): boolean {
+  if (priority === "all") return true;
+  if (node.priority === priority) return true;
+  return node.children.some((child) => matchesPriority(child, priority));
+}
 function countNodes(nodes: TaskNode[]): { total: number; done: number } {
   let total = 0, done = 0;
   for (const n of nodes) {
@@ -125,6 +133,7 @@ interface TaskItemProps {
   depth: number;
   query: string;
   showCompleted: boolean;
+  priorityFilter: "all" | Task["priority"];
   allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
@@ -136,7 +145,7 @@ interface TaskItemProps {
 }
 
 function TaskItem({
-  node, categoryId, depth, query, showCompleted, allCatTasks,
+  node, categoryId, depth, query, showCompleted, priorityFilter, allCatTasks,
   onUpdate, onDelete, onSwipeDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
@@ -184,6 +193,7 @@ function TaskItem({
 
   if (node.done && !showCompleted && !isDragOverlay) return null;
   if (query && !matchesSearch(node, query) && !isDragOverlay) return null;
+  if (priorityFilter !== "all" && !matchesPriority(node, priorityFilter) && !isDragOverlay) return null;
 
   const hasChildren = node.children.length > 0;
 
@@ -524,6 +534,7 @@ function TaskItem({
                   depth={depth + 1}
                   query={query}
                   showCompleted={showCompleted}
+                  priorityFilter={priorityFilter}
                   allCatTasks={allCatTasks}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
@@ -657,6 +668,7 @@ interface CategoryCardProps {
   tasks: Task[];
   query: string;
   showCompleted: boolean;
+  priorityFilter: "all" | Task["priority"];
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
@@ -669,7 +681,7 @@ interface CategoryCardProps {
 }
 
 function CategoryCard({
-  cat, tasks, query, showCompleted,
+  cat, tasks, query, showCompleted, priorityFilter,
   onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
@@ -702,7 +714,8 @@ function CategoryCard({
     [tasks]
   );
   const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
-  if (query && !hasMatchingItems) return null;
+  const hasMatchingPriority = priorityFilter === "all" || tasks.some((task) => task.priority === priorityFilter);
+  if ((query && !hasMatchingItems) || !hasMatchingPriority) return null;
 
   return (
     <div
@@ -799,6 +812,7 @@ function CategoryCard({
                   depth={0}
                   query={query}
                   showCompleted={showCompleted}
+                  priorityFilter={priorityFilter}
                   allCatTasks={tasks}
                   onUpdate={onUpdateTask}
                   onDelete={onDeleteTask}
@@ -854,11 +868,17 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeCats, setActiveCats] = useState<Set<number> | null>(null);
-  const [activeView, setActiveView] = useState<"all" | "today" | "upcoming">(() => {
+  const [activeView, setActiveView] = useState<"all" | "today" | "upcoming" | "high" | "calendar">(() => {
     if (typeof window === "undefined") return "all";
     const view = new URLSearchParams(window.location.search).get("view");
-    return view === "today" || view === "upcoming" ? view : "all";
+    return view === "today" || view === "upcoming" || view === "high" || view === "calendar" ? view : "all";
   });
+  const [priorityFilter, setPriorityFilter] = useState<"all" | Task["priority"]>("all");
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey(new Date()));
   const [newCatName, setNewCatName] = useState("");
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -904,6 +924,28 @@ export default function Dashboard() {
     () => selectUpcomingTasks(tasksData, categoriesData),
     [tasksData, categoriesData],
   );
+  const priorityFilteredTasks = useMemo(
+    () => filterTasksByPriority(tasksData, priorityFilter),
+    [tasksData, priorityFilter],
+  );
+  const priorityFilteredTodayTasks = useMemo(
+    () => filterTasksByPriority(todayTasks, priorityFilter),
+    [todayTasks, priorityFilter],
+  );
+  const priorityFilteredUpcomingTasks = useMemo(
+    () => filterTasksByPriority(upcomingTasks, priorityFilter),
+    [upcomingTasks, priorityFilter],
+  );
+  const highPriorityTasks = useMemo(
+    () => tasksData.filter((task) => !task.done && task.priority === "high"),
+    [tasksData],
+  );
+  const calendarDays = useMemo(() => calendarMonthDays(calendarMonth), [calendarMonth]);
+  const calendarTaskGroups = useMemo(
+    () => groupTasksByDay(showCompleted ? priorityFilteredTasks : priorityFilteredTasks.filter((task) => !task.done)),
+    [priorityFilteredTasks, showCompleted],
+  );
+  const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
 
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
@@ -1048,13 +1090,19 @@ export default function Dashboard() {
     });
   }, [categoriesData]);
 
-  const handleViewChange = useCallback((view: "all" | "today" | "upcoming") => {
+  const handleViewChange = useCallback((view: "all" | "today" | "upcoming" | "high" | "calendar") => {
     setActiveView(view);
     const url = new URL(window.location.href);
     if (view !== "all") url.searchParams.set("view", view);
     else url.searchParams.delete("view");
     window.history.replaceState({}, "", url);
   }, []);
+
+  const handleCalendarMonthChange = useCallback((delta: number) => {
+    const nextMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
+    setCalendarMonth(nextMonth);
+    setSelectedCalendarDate(dateKey(nextMonth));
+  }, [calendarMonth]);
 
   // ---- dnd-kit sensors — pointer + touch, with 8px activation distance ----
   const sensors = useSensors(
@@ -1198,7 +1246,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <nav className="mb-4 inline-flex items-center gap-1 rounded-xl border p-1" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label="Task views">
+          <nav className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border p-1" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label="Task views">
             <button
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
               style={{ background: activeView === "all" ? "var(--page-plane)" : "transparent", color: activeView === "all" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
@@ -1223,6 +1271,22 @@ export default function Dashboard() {
             >
               <CalendarDays size={13} /> Upcoming <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{upcomingTasks.length}</span>
             </button>
+            <button
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
+              style={{ background: activeView === "high" ? "var(--page-plane)" : "transparent", color: activeView === "high" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
+              onClick={() => handleViewChange("high")}
+              type="button"
+            >
+              <Flag size={13} fill="currentColor" style={{ color: "var(--status-critical)" }} /> High <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{highPriorityTasks.length}</span>
+            </button>
+            <button
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
+              style={{ background: activeView === "calendar" ? "var(--page-plane)" : "transparent", color: activeView === "calendar" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
+              onClick={() => handleViewChange("calendar")}
+              type="button"
+            >
+              <CalendarDays size={13} /> Calendar
+            </button>
           </nav>
 
           {/* Controls */}
@@ -1246,6 +1310,24 @@ export default function Dashboard() {
             >
               {showCompleted ? "Hide completed" : "Show completed"}
             </button>
+            <div className="flex items-center gap-1 rounded-full border p-1" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label="Priority filter">
+              {(["all", "high", "medium", "low"] as const).map((priority) => {
+                const isActive = priorityFilter === priority;
+                const meta = priority === "all" ? { label: "All", color: "var(--text-secondary)" } : priorityMeta(priority);
+                return (
+                  <button
+                    key={priority}
+                    className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-[inherit]"
+                    style={{ color: meta.color, background: isActive ? "var(--page-plane)" : "transparent", border: "none" }}
+                    onClick={() => setPriorityFilter(priority)}
+                    type="button"
+                    aria-label={`Filter ${meta.label} priority`}
+                  >
+                    {priority !== "all" && <Flag size={10} fill="currentColor" />} {meta.label}
+                  </button>
+                );
+              })}
+            </div>
             <label
               className="flex items-center gap-2 px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit]"
               style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
@@ -1314,12 +1396,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {todayTasks.length} task{todayTasks.length === 1 ? "" : "s"}
+                  {priorityFilteredTodayTasks.length} task{priorityFilteredTodayTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {todayTasks.length > 0 ? (
+              {priorityFilteredTodayTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {todayTasks.map((task) => (
+                  {priorityFilteredTodayTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1331,7 +1413,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
-                  Nothing is urgent or due today. You have a clear runway.
+                  Nothing matching this priority is urgent or due today. You have a clear runway.
                 </div>
               )}
             </section>
@@ -1347,12 +1429,12 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)", borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
-                  {upcomingTasks.length} task{upcomingTasks.length === 1 ? "" : "s"}
+                  {priorityFilteredUpcomingTasks.length} task{priorityFilteredUpcomingTasks.length === 1 ? "" : "s"}
                 </span>
               </div>
-              {upcomingTasks.length > 0 ? (
+              {priorityFilteredUpcomingTasks.length > 0 ? (
                 <div className="space-y-2">
-                  {upcomingTasks.map((task) => (
+                  {priorityFilteredUpcomingTasks.map((task) => (
                     <TodayTaskRow
                       key={task.id}
                       task={task}
@@ -1364,9 +1446,125 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
-                  No unfinished tasks are due in the next 7 days.
+                  No unfinished tasks matching this priority are due in the next 7 days.
                 </div>
               )}
+            </section>
+          )}
+
+          {!isLoading && activeView === "high" && (
+            <section className="rounded-2xl border p-4" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="m-0 text-[17px] font-semibold" style={{ color: "var(--text-primary)" }}>High priority</h2>
+                  <p className="m-0 mt-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+                    All unfinished High priority tasks, independent of their category
+                  </p>
+                </div>
+                <span className="rounded-full border px-2 py-1 text-[11px]" style={{ color: "var(--status-critical)", borderColor: "var(--status-critical)", background: "var(--card-surface)" }}>
+                  {highPriorityTasks.length} task{highPriorityTasks.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {highPriorityTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {highPriorityTasks.map((task) => (
+                    <TodayTaskRow
+                      key={task.id}
+                      task={task}
+                      category={categoriesData.find((category) => category.id === task.categoryId)}
+                      onUpdate={handleUpdateTask}
+                      onDelete={handleDeleteTask}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed px-4 py-9 text-center" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
+                  No unfinished High priority tasks.
+                </div>
+              )}
+            </section>
+          )}
+
+          {!isLoading && activeView === "calendar" && (
+            <section className="rounded-2xl border p-3 sm:p-4" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="m-0 text-[17px] font-semibold" style={{ color: "var(--text-primary)" }}>Calendar</h2>
+                  <p className="m-0 mt-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+                    Tasks organised by due date{priorityFilter !== "all" ? ` · ${priorityMeta(priorityFilter).label} priority filter` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: "var(--border-color)", background: "var(--card-surface)" }}>
+                  <button className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent" type="button" onClick={() => handleCalendarMonthChange(-1)} aria-label="Previous month">
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span className="min-w-[122px] text-center text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                    {calendarMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+                  </span>
+                  <button className="flex h-7 w-7 items-center justify-center rounded border-none bg-transparent" type="button" onClick={() => handleCalendarMonthChange(1)} aria-label="Next month">
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 overflow-hidden rounded-xl border" style={{ borderColor: "var(--border-color)" }}>
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => (
+                  <div key={weekday} className="border-b px-1 py-2 text-center text-[10px] font-semibold" style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}>{weekday}</div>
+                ))}
+                {calendarDays.map((day) => {
+                  const dayKey = dateKey(day);
+                  const dayTasks = calendarTaskGroups.get(dayKey) ?? [];
+                  const inCurrentMonth = day.getMonth() === calendarMonth.getMonth();
+                  const isToday = dayKey === dateKey(new Date());
+                  const selected = dayKey === selectedCalendarDate;
+                  return (
+                    <div
+                      key={dayKey}
+                      className="min-h-[82px] cursor-pointer border-b border-r p-1.5 transition-colors sm:min-h-[110px]"
+                      style={{ background: selected ? "var(--card-surface)" : "transparent", borderColor: "var(--border-color)", opacity: inCurrentMonth ? 1 : 0.45, outline: selected ? "1px solid var(--slot-1)" : "none", outlineOffset: "-1px" }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedCalendarDate(dayKey)}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedCalendarDate(dayKey); } }}
+                      aria-label={`Select ${day.toLocaleDateString("en-GB", { day: "numeric", month: "long" })}`}
+                    >
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold" style={{ color: isToday ? "white" : "var(--text-secondary)", background: isToday ? "var(--slot-1)" : "transparent" }}>{day.getDate()}</span>
+                        {dayTasks.length > 0 && <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>{dayTasks.length}</span>}
+                      </div>
+                      <div className="space-y-1">
+                        {dayTasks.slice(0, 2).map((task) => (
+                          <div key={task.id} className="truncate rounded px-1 py-0.5 text-[9px] font-medium" style={{ color: priorityMeta(task.priority).color, background: "var(--drop-wash)" }} title={task.text}>
+                            {task.text}
+                          </div>
+                        ))}
+                        {dayTasks.length > 2 && <div className="px-1 text-[9px]" style={{ color: "var(--text-muted)" }}>+{dayTasks.length - 2} more</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {new Date(`${selectedCalendarDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+                </div>
+                {selectedCalendarTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedCalendarTasks.map((task) => (
+                      <TodayTaskRow
+                        key={task.id}
+                        task={task}
+                        category={categoriesData.find((category) => category.id === task.categoryId)}
+                        onUpdate={handleUpdateTask}
+                        onDelete={handleDeleteTask}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed px-3 py-5 text-center text-[12px]" style={{ borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
+                    No due tasks on this date.
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
@@ -1384,6 +1582,7 @@ export default function Dashboard() {
                     tasks={tasksData.filter((t) => t.categoryId === cat.id)}
                     query={query.toLowerCase()}
                     showCompleted={showCompleted}
+                    priorityFilter={priorityFilter}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}

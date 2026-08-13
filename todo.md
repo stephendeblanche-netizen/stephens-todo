@@ -104,3 +104,15 @@
 - [x] Add independent high, medium, and low priority controls and indicators
 - [x] Create a shareable Upcoming view for unfinished tasks due in the next 7 days
 - [x] Test recurrence calculation, priority handling, and Upcoming selection logic
+
+## Priority Filters & Calendar
+- [x] Add high, medium, low, and all-priority filters to task views
+- [x] Add a shareable High priority quick view
+- [x] Build a responsive month calendar organised by task due dates
+- [x] Support calendar month navigation and task selection/editing
+- [x] Test priority filtering and calendar date grouping helpers
+- [x] Ensure expanded task view navigation remains accessible on narrow mobile screens
+- [x] Apply the selected priority filter to Today and Upcoming task lists
+- [x] Add focused-view tests for priority filters and the High quick view state
+- [x] Add Dashboard tests for priority filters in Today and Upcoming views
+- [x] Add Dashboard tests for the High quick view URL state and rendered task selection
