@@ -23,3 +23,7 @@ export function canStartMobileSwipe(
 export function settleSwipeOffset(offset: number): number {
   return shouldRevealSwipeDelete(offset) ? -MOBILE_SWIPE_DELETE_WIDTH : 0;
 }
+
+export function resolveSwipeDeletion(confirmBeforeDelete: boolean): "confirm" | "delete" {
+  return confirmBeforeDelete ? "confirm" : "delete";
+}

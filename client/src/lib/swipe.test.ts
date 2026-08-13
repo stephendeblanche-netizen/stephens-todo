@@ -4,6 +4,7 @@ import {
   clampSwipeOffset,
   MOBILE_SWIPE_DELETE_THRESHOLD,
   MOBILE_SWIPE_DELETE_WIDTH,
+  resolveSwipeDeletion,
   settleSwipeOffset,
   shouldRevealSwipeDelete,
 } from "./swipe";
@@ -34,5 +35,10 @@ describe("mobile swipe-to-delete", () => {
     expect(canStartMobileSwipe("mouse", false, unprotected)).toBe(false);
     expect(canStartMobileSwipe("touch", true, unprotected)).toBe(false);
     expect(canStartMobileSwipe("touch", false, protectedControl)).toBe(false);
+  });
+
+  it("uses the confirmation path only when the preference is enabled", () => {
+    expect(resolveSwipeDeletion(true)).toBe("confirm");
+    expect(resolveSwipeDeletion(false)).toBe("delete");
   });
 });

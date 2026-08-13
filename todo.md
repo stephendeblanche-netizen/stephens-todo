@@ -82,3 +82,11 @@
 - [x] Ensure swiping reveals a delete action without interfering with scrolling, text editing, or drag handles
 - [x] Verify responsive task controls and deletion behavior on mobile
 - [x] Add unit coverage for touch intent, reveal threshold, and protected task controls
+
+## Swipe Deletion Confirmation
+- [x] Add an optional preference to confirm swipe-revealed task deletions
+- [x] Show an accessible confirmation prompt before deleting when the preference is enabled
+- [x] Test confirmation and immediate-delete paths
+- [x] Add component tests for confirmed and immediate swipe deletion actions
+- [x] Test persisted swipe confirmation preference handling
+- [x] Test the rendered confirmation dialog’s confirm and cancel actions

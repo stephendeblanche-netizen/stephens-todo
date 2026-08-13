@@ -7,6 +7,9 @@ import {
   settleSwipeOffset,
   shouldRevealSwipeDelete,
 } from "@/lib/swipe";
+import { useSwipeDeleteConfirmation } from "@/hooks/useSwipeDeleteConfirmation";
+import { SwipeDeleteConfirmationDialog } from "@/components/SwipeDeleteConfirmationDialog";
+import { Switch } from "@/components/ui/switch";
 import type { Category, Task } from "../../../drizzle/schema";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -21,6 +24,7 @@ import {
   FileDown,
   FileUp,
   StickyNote,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import {
@@ -96,6 +100,7 @@ interface TaskItemProps {
   allCatTasks: Task[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
+  onSwipeDelete: (id: number, text: string) => void;
   onAddChild: (parentId: number, categoryId: number) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
@@ -104,7 +109,7 @@ interface TaskItemProps {
 
 function TaskItem({
   node, categoryId, depth, query, showCompleted, allCatTasks,
-  onUpdate, onDelete, onAddChild,
+  onUpdate, onDelete, onSwipeDelete, onAddChild,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
 }: TaskItemProps) {
@@ -221,7 +226,7 @@ function TaskItem({
               onClick={() => {
                 setSwipeOpen(false);
                 setSwipeOffset(0);
-                onDelete(node.id, node.text);
+                onSwipeDelete(node.id, node.text);
               }}
             >
               <span className="flex flex-col items-center justify-center gap-1">
@@ -403,6 +408,7 @@ function TaskItem({
                   allCatTasks={allCatTasks}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
+                  onSwipeDelete={onSwipeDelete}
                   onAddChild={onAddChild}
                   newTaskId={newTaskId}
                   onNewTaskCommitted={onNewTaskCommitted}
@@ -426,6 +432,7 @@ interface CategoryCardProps {
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
   onDeleteTask: (id: number, text: string) => void;
+  onSwipeDelete: (id: number, text: string) => void;
   onAddTask: (catId: number, parentId?: number) => void;
   onClearCompleted: (catId: number) => void;
   newTaskId?: number | null;
@@ -434,7 +441,7 @@ interface CategoryCardProps {
 
 function CategoryCard({
   cat, tasks, query, showCompleted,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onAddTask, onClearCompleted,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
   const tree = useMemo(() => buildTree(tasks), [tasks]);
@@ -566,6 +573,7 @@ function CategoryCard({
                   allCatTasks={tasks}
                   onUpdate={onUpdateTask}
                   onDelete={onDeleteTask}
+                  onSwipeDelete={onSwipeDelete}
                   onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
                   newTaskId={newTaskId}
                   onNewTaskCommitted={onNewTaskCommitted}
@@ -695,6 +703,15 @@ export default function Dashboard() {
       },
     });
   }, [deleteTaskMut, createTaskMut, tasksData]);
+
+  const {
+    confirmSwipeDelete,
+    pendingSwipeDelete,
+    setConfirmSwipeDelete,
+    requestSwipeDelete,
+    confirmPendingSwipeDelete,
+    clearPendingSwipeDelete,
+  } = useSwipeDeleteConfirmation(handleDeleteTask);
 
   const handleClearCompleted = useCallback((catId: number) => {
     const doneTasks = tasksData.filter((t) => t.categoryId === catId && t.done);
@@ -951,6 +968,19 @@ export default function Dashboard() {
             >
               {showCompleted ? "Hide completed" : "Show completed"}
             </button>
+            <label
+              className="flex items-center gap-2 px-3 py-2 rounded-full border text-[12px] cursor-pointer font-[inherit]"
+              style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
+              title="Ask for confirmation before deleting a task with the swipe action"
+            >
+              <ShieldCheck size={13} style={{ color: confirmSwipeDelete ? "var(--status-good)" : "var(--text-muted)" }} />
+              Confirm swipe delete
+              <Switch
+                checked={confirmSwipeDelete}
+                onCheckedChange={setConfirmSwipeDelete}
+                aria-label="Confirm swipe deletion"
+              />
+            </label>
           </div>
 
           {/* Add category */}
@@ -1014,6 +1044,7 @@ export default function Dashboard() {
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}
                     onDeleteTask={handleDeleteTask}
+                    onSwipeDelete={requestSwipeDelete}
                     onAddTask={handleAddTask}
                     onClearCompleted={handleClearCompleted}
                     newTaskId={newTaskId}
@@ -1052,6 +1083,12 @@ export default function Dashboard() {
             </div>
           )}
         </DragOverlay>
+
+        <SwipeDeleteConfirmationDialog
+          pendingDeletion={pendingSwipeDelete}
+          onConfirm={confirmPendingSwipeDelete}
+          onCancel={clearPendingSwipeDelete}
+        />
 
         <style>{`
           @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr) !important; } }
