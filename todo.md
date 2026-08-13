@@ -156,3 +156,16 @@
 - [x] Verify its desktop and mobile layout remains usable
 - [x] Verify the relocated Direct Reports controls at the bottom of the mobile layout
 - [x] Add narrow-viewport interaction coverage for the bottom-positioned Direct Reports manager
+
+## Reliable Task Drag-and-Drop
+- [x] Support dropping a task into an empty category as a top-level task
+- [x] Support precise drop zones before, between, and after all sibling tasks
+- [x] Support dropping a task into any sub-task level while blocking invalid parent-child cycles
+- [x] Preserve sibling order when reordering within or across categories and hierarchy levels
+- [x] Test empty-category, between-item, nesting, and touch drag target behavior
+- [x] Add Dashboard drag tests for empty-category, sibling-gap, and sub-task drops
+- [x] Add touch-oriented coverage for task drop-target activation and placement payloads
+- [x] Add Dashboard assertions for empty, sibling-gap, and sub-task drop target rendering
+- [x] Add deterministic pointer/touch drag-end placement parity coverage
+- [x] Route pointer and touch activator paths through a shared drag-end placement abstraction
+- [x] Test sensor-specific activator detection and identical placement payloads for both paths

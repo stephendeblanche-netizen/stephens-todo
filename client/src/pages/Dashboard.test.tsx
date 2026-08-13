@@ -15,7 +15,11 @@ const fixture = vi.hoisted(() => ({
     { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "Important detail", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
     { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
     { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
-  ],
+  ] as Array<{
+    id: number; categoryId: number; parentId: number | null; text: string; note: string; dueAt: number | null;
+    priority: "high" | "medium" | "low"; recurrence: "none" | "daily" | "weekly" | "monthly";
+    accountableDirectReportId: number | null; done: boolean; collapsed: boolean; sortOrder: number;
+  }>,
   filters: [
     { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
   ],
@@ -24,6 +28,7 @@ const fixture = vi.hoisted(() => ({
   ],
   updateFilterMutate: vi.fn(),
   taskUpdateMutate: vi.fn(),
+  reorderTaskMutate: vi.fn(),
   createDirectReportMutate: vi.fn(),
 }));
 
@@ -41,7 +46,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
-      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: vi.fn() }) },
+      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
     },
     filters: {
       list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
@@ -70,8 +75,18 @@ function renderDashboard(view: string) {
 describe("Dashboard focused priority views", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    fixture.categories = [
+      { id: 1, name: "URGENT", kind: "urgent", colorIndex: 0, sortOrder: 0, collapsed: false },
+      { id: 2, name: "QDR", kind: "normal", colorIndex: 1, sortOrder: 1, collapsed: false },
+    ];
+    fixture.tasks = [
+      { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "Important detail", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
+      { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+      { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
+    ];
     fixture.updateFilterMutate.mockReset();
     fixture.taskUpdateMutate.mockReset();
+    fixture.reorderTaskMutate.mockReset();
     fixture.createDirectReportMutate.mockReset();
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
@@ -106,6 +121,32 @@ describe("Dashboard focused priority views", () => {
     expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
     expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
     expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+  });
+
+  it("renders a clear task drop target inside an empty category", () => {
+    fixture.categories = [
+      ...fixture.categories,
+      { id: 3, name: "Empty category", kind: "normal", colorIndex: 2, sortOrder: 2, collapsed: false },
+    ];
+    renderDashboard("all");
+    expect(screen.getByText("No items yet — drag a task here")).not.toBeNull();
+  });
+
+  it("renders empty-category, sibling-gap, and sub-task drop targets", () => {
+    fixture.categories = [
+      ...fixture.categories,
+      { id: 3, name: "Empty category", kind: "normal", colorIndex: 2, sortOrder: 2, collapsed: false },
+    ];
+    fixture.tasks = [
+      ...fixture.tasks,
+      { id: 4, categoryId: 1, parentId: 1, text: "Existing child", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 0 },
+    ];
+    renderDashboard("all");
+
+    expect(document.querySelector('[data-task-drop-target="gap-3-root-0"]')).not.toBeNull();
+    expect(document.querySelector('[data-task-drop-target="gap-1-root-0"]')).not.toBeNull();
+    expect(document.querySelector('[data-task-drop-target="gap-1-1-0"]')).not.toBeNull();
+    expect(document.querySelector('[data-task-nest-target="1"]')).not.toBeNull();
   });
 
   it("applies a saved high-priority due-this-week filter to the main task list", async () => {

@@ -20,7 +20,8 @@ import {
 import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } from "@/lib/calendar";
 import { applySavedFilter, matchesDueRange, type DueRange } from "@/lib/savedFilters";
 import { filterTasksByDirectReport, matchesDirectReport, type DirectReportFilter } from "@/lib/directReports";
-import { buildTaskNestUpdates, canNestTask } from "@/lib/taskNesting";
+import { canNestTask } from "@/lib/taskNesting";
+import { buildSensorTaskPlacementUpdates, getDragActivator } from "@/lib/taskDrop";
 import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ import {
   DragOverlay,
   PointerSensor,
   TouchSensor,
+  MeasuringStrategy,
   useDndContext,
   useDroppable,
   useSensor,
@@ -134,6 +136,9 @@ function countNodes(nodes: TaskNode[]): { total: number; done: number } {
 function taskDragId(id: number) { return `task-${id}`; }
 function catDragId(id: number) { return `cat-${id}`; }
 function nestDropId(id: number) { return `nest-${id}`; }
+function taskGapDropId(categoryId: number, parentId: number | null, index: number) {
+  return `gap-${categoryId}-${parentId ?? "root"}-${index}`;
+}
 function parseDragId(id: string): { type: "task" | "cat"; id: number } | null {
   if (id.startsWith("task-")) return { type: "task", id: parseInt(id.slice(5)) };
   if (id.startsWith("cat-")) return { type: "cat", id: parseInt(id.slice(4)) };
@@ -145,19 +150,74 @@ function parseNestDropId(id: string): number | null {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function parseTaskGapDropId(id: string): { categoryId: number; parentId: number | null; index: number } | null {
+  const match = /^gap-(\d+)-(root|\d+)-(\d+)$/.exec(id);
+  if (!match) return null;
+  return {
+    categoryId: Number(match[1]),
+    parentId: match[2] === "root" ? null : Number(match[2]),
+    index: Number(match[3]),
+  };
+}
+
+function TaskGapDropTarget({
+  categoryId,
+  parentId,
+  index,
+  tasks,
+  empty = false,
+}: {
+  categoryId: number;
+  parentId: number | null;
+  index: number;
+  tasks: Task[];
+  empty?: boolean;
+}) {
+  const { active } = useDndContext();
+  const activeInfo = active ? parseDragId(String(active.id)) : null;
+  const canAccept = activeInfo?.type === "task"
+    && (parentId === null || canNestTask(tasks, activeInfo.id, parentId));
+  const { setNodeRef, isOver } = useDroppable({
+    id: taskGapDropId(categoryId, parentId, index),
+    disabled: activeInfo !== null && !canAccept,
+    data: { type: "task-gap", categoryId, parentId, index },
+  });
+  const taskIsDragging = activeInfo?.type === "task";
+
+  return (
+    <li
+      ref={setNodeRef}
+      data-task-drop-target={taskGapDropId(categoryId, parentId, index)}
+      className="list-none overflow-hidden rounded-md text-center text-[10px] font-semibold transition-all duration-150"
+      style={{
+        height: taskIsDragging ? (empty ? 58 : 18) : (empty ? 42 : 2),
+        margin: taskIsDragging ? "2px 0" : 0,
+        color: isOver ? "var(--slot-1)" : "transparent",
+        background: isOver ? "var(--drop-wash)" : (empty ? "var(--page-plane)" : "transparent"),
+        outline: isOver ? "1px dashed var(--slot-1)" : (empty ? "1px dashed var(--border-color)" : "none"),
+        lineHeight: taskIsDragging ? (empty ? "58px" : "18px") : "42px",
+      }}
+      aria-hidden={!canAccept && !empty}
+    >
+      {taskIsDragging ? (isOver ? "Drop task here" : "Drop between items") : (empty ? "No items yet — drag a task here" : "")}
+    </li>
+  );
+}
+
 function TaskNestDropTarget({ taskId, taskText, tasks }: { taskId: number; taskText: string; tasks: Task[] }) {
   const { active } = useDndContext();
   const activeInfo = active ? parseDragId(String(active.id)) : null;
   const canAccept = activeInfo?.type === "task" && canNestTask(tasks, activeInfo.id, taskId);
   const { setNodeRef, isOver } = useDroppable({
     id: nestDropId(taskId),
-    disabled: !canAccept,
+    disabled: activeInfo !== null && !canAccept,
     data: { type: "nest", parentId: taskId },
   });
 
   return (
     <div
       ref={setNodeRef}
+      data-task-nest-target={taskId}
       className="mx-2 overflow-hidden rounded-md text-center text-[10px] font-semibold transition-all duration-150"
       style={{
         height: activeInfo?.type === "task" ? 26 : 2,
@@ -304,7 +364,7 @@ function TaskItem({
 
   return (
     <>
-      <li ref={setNodeRef} style={style} className="list-none">
+      <li ref={setNodeRef} style={style} className="list-none" data-task-id={node.id}>
         <div className="relative overflow-hidden rounded-md task-swipe-shell">
           <div
             className="absolute inset-y-0 right-0 flex w-24 items-stretch justify-end"
@@ -352,6 +412,8 @@ function TaskItem({
               cursor: "grab",
             }}
             data-drag-handle
+            title="Drag to move. Drop on a blue gap to position it, or under a task to make it a sub-task."
+            aria-label={`Drag ${node.text} to reorder or make it a sub-task`}
             {...attributes}
             {...listeners}
           >
@@ -624,26 +686,29 @@ function TaskItem({
               items={node.children.map((c) => taskDragId(c.id))}
               strategy={verticalListSortingStrategy}
             >
-              {node.children.map((child) => (
-                <TaskItem
-                  key={child.id}
-                  node={child}
-                  categoryId={categoryId}
-                  depth={depth + 1}
-                  query={query}
-                  showCompleted={showCompleted}
-                  priorityFilter={priorityFilter}
-                  dueRange={dueRange}
-                  directReportFilter={directReportFilter}
-                  directReports={directReports}
-                  allCatTasks={allCatTasks}
-                  onUpdate={onUpdate}
-                  onDelete={onDelete}
-                  onSwipeDelete={onSwipeDelete}
-                  onAddChild={onAddChild}
-                  newTaskId={newTaskId}
-                  onNewTaskCommitted={onNewTaskCommitted}
-                />
+              <TaskGapDropTarget categoryId={categoryId} parentId={node.id} index={0} tasks={allCatTasks} />
+              {node.children.map((child, index) => (
+                <React.Fragment key={child.id}>
+                  <TaskItem
+                    node={child}
+                    categoryId={categoryId}
+                    depth={depth + 1}
+                    query={query}
+                    showCompleted={showCompleted}
+                    priorityFilter={priorityFilter}
+                    dueRange={dueRange}
+                    directReportFilter={directReportFilter}
+                    directReports={directReports}
+                    allCatTasks={allCatTasks}
+                    onUpdate={onUpdate}
+                    onDelete={onDelete}
+                    onSwipeDelete={onSwipeDelete}
+                    onAddChild={onAddChild}
+                    newTaskId={newTaskId}
+                    onNewTaskCommitted={onNewTaskCommitted}
+                  />
+                  <TaskGapDropTarget categoryId={categoryId} parentId={node.id} index={index + 1} tasks={allCatTasks} />
+                </React.Fragment>
               ))}
             </SortableContext>
           </ul>
@@ -847,6 +912,8 @@ function CategoryCard({
   const { total, done } = useMemo(() => countNodes(tree), [tree]);
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
   const color = catColor(cat);
+  const { active } = useDndContext();
+  const taskDragActive = active ? parseDragId(String(active.id))?.type === "task" : false;
 
   const {
     attributes: catAttributes,
@@ -858,6 +925,7 @@ function CategoryCard({
   } = useSortable({
     id: catDragId(cat.id),
     data: { type: "cat", catId: cat.id },
+    disabled: taskDragActive,
   });
 
   const catStyle: React.CSSProperties = {
@@ -957,6 +1025,11 @@ function CategoryCard({
       </div>
 
       {/* Body */}
+      {cat.collapsed && (
+        <ul className="m-0 list-none px-4 pb-3">
+          <TaskGapDropTarget categoryId={cat.id} parentId={null} index={topLevelTasks.length} tasks={tasks} />
+        </ul>
+      )}
       {!cat.collapsed && (
         <div className="px-4 pb-3.5">
           <ul className="list-none m-0 p-0 min-h-[6px]">
@@ -964,26 +1037,29 @@ function CategoryCard({
               items={topLevelTasks.map((t) => taskDragId(t.id))}
               strategy={verticalListSortingStrategy}
             >
-              {tree.map((node) => (
-                <TaskItem
-                  key={node.id}
-                  node={node}
-                  categoryId={cat.id}
-                  depth={0}
-                  query={query}
-                  showCompleted={showCompleted}
-                  priorityFilter={priorityFilter}
-                  dueRange={dueRange}
-                  directReportFilter={directReportFilter}
-                  directReports={directReports}
-                  allCatTasks={tasks}
-                  onUpdate={onUpdateTask}
-                  onDelete={onDeleteTask}
-                  onSwipeDelete={onSwipeDelete}
-                  onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
-                  newTaskId={newTaskId}
-                  onNewTaskCommitted={onNewTaskCommitted}
-                />
+              <TaskGapDropTarget categoryId={cat.id} parentId={null} index={0} tasks={tasks} empty={tree.length === 0} />
+              {tree.map((node, index) => (
+                <React.Fragment key={node.id}>
+                  <TaskItem
+                    node={node}
+                    categoryId={cat.id}
+                    depth={0}
+                    query={query}
+                    showCompleted={showCompleted}
+                    priorityFilter={priorityFilter}
+                    dueRange={dueRange}
+                    directReportFilter={directReportFilter}
+                    directReports={directReports}
+                    allCatTasks={tasks}
+                    onUpdate={onUpdateTask}
+                    onDelete={onDeleteTask}
+                    onSwipeDelete={onSwipeDelete}
+                    onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
+                    newTaskId={newTaskId}
+                    onNewTaskCommitted={onNewTaskCommitted}
+                  />
+                  <TaskGapDropTarget categoryId={cat.id} parentId={null} index={index + 1} tasks={tasks} />
+                </React.Fragment>
               ))}
             </SortableContext>
           </ul>
@@ -1053,6 +1129,7 @@ export default function Dashboard() {
   const [newCatName, setNewCatName] = useState("");
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
   const updateCatMut = trpc.categories.update.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1402,6 +1479,7 @@ export default function Dashboard() {
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    dragActivatorRef.current = getDragActivator(event.activatorEvent?.type);
     setActiveDragId(String(event.active.id));
   }, []);
 
@@ -1418,10 +1496,27 @@ export default function Dashboard() {
       const activeTask = tasksData.find((task) => task.id === activeInfo.id);
       const parentTask = tasksData.find((task) => task.id === nestParentId);
       if (!activeTask || !parentTask) return;
-      const nestUpdates = buildTaskNestUpdates(tasksData, activeTask.id, parentTask.id);
+      const nestUpdates = buildSensorTaskPlacementUpdates(dragActivatorRef.current, tasksData, activeTask.id, {
+        categoryId: parentTask.categoryId,
+        parentId: parentTask.id,
+        index: tasksData.filter((task) => task.categoryId === parentTask.categoryId && task.parentId === parentTask.id).length,
+      });
       if (!nestUpdates) return;
       reorderTaskMut.mutate(nestUpdates);
       toast.success(`Moved “${activeTask.text}” under “${parentTask.text}”.`);
+      return;
+    }
+
+    const gapDestination = parseTaskGapDropId(String(over.id));
+    if (activeInfo.type === "task" && gapDestination) {
+      const activeTask = tasksData.find((task) => task.id === activeInfo.id);
+      if (!activeTask) return;
+      const updates = buildSensorTaskPlacementUpdates(dragActivatorRef.current, tasksData, activeTask.id, gapDestination);
+      if (!updates) {
+        toast.error("That task cannot be dropped inside one of its own sub-tasks.");
+        return;
+      }
+      reorderTaskMut.mutate(updates);
       return;
     }
 
@@ -1453,23 +1548,20 @@ export default function Dashboard() {
       const targetCatId = overTask.categoryId;
       const targetParentId = overTask.parentId ?? null;
 
-      // Full sibling list at destination (all tasks, not just visible ones)
-      const allSiblings = tasksData
-        .filter((t) => t.categoryId === targetCatId && (t.parentId ?? null) === targetParentId && t.id !== activeTask.id)
-        .sort((a, b) => a.sortOrder - b.sortOrder);
-
-      // Insert active task at the position of the over task
-      const overIdx = allSiblings.findIndex((t) => t.id === overTask.id);
-      const insertIdx = overIdx === -1 ? allSiblings.length : overIdx;
-      allSiblings.splice(insertIdx, 0, { ...activeTask, categoryId: targetCatId, parentId: targetParentId });
-
-      const updates = allSiblings.map((t, i) => ({
-        id: t.id,
-        sortOrder: i,
-        parentId: targetParentId,
+      const siblings = tasksData
+        .filter((task) => task.categoryId === targetCatId && (task.parentId ?? null) === targetParentId)
+        .sort((left, right) => left.sortOrder - right.sortOrder);
+      const overIndex = siblings.findIndex((task) => task.id === overTask.id);
+      const translated = active.rect.current.translated;
+      const activeMidpoint = translated ? translated.top + translated.height / 2 : 0;
+      const overMidpoint = over.rect.top + over.rect.height / 2;
+      const insertAfter = translated ? activeMidpoint > overMidpoint : event.delta.y > 0;
+      const updates = buildSensorTaskPlacementUpdates(dragActivatorRef.current, tasksData, activeTask.id, {
         categoryId: targetCatId,
-      }));
-      reorderTaskMut.mutate(updates);
+        parentId: targetParentId,
+        index: Math.max(0, overIndex) + (insertAfter ? 1 : 0),
+      });
+      if (updates) reorderTaskMut.mutate(updates);
     }
   }, [categoriesData, tasksData, reorderCatMut, reorderTaskMut]);
 
@@ -1491,6 +1583,7 @@ export default function Dashboard() {
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       modifiers={[restrictToVerticalAxis]}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
