@@ -186,12 +186,13 @@
 - [x] Confirm daily delivery from stephen.deblanche@gmail.com to stephend@nutun.com at 19:00 SAST
 - [x] Select fully automatic delivery rather than a manually approved Gmail draft
 - [x] Obtain and validate an unattended Gmail sending credential for stephen.deblanche@gmail.com
-- [ ] Redeploy the daily dashboard email route before re-enabling the recurring job
-- [ ] Trigger and verify an authenticated scheduled callback, including an application-written delivery timestamp
-- [ ] Reconfirm schedule-management documentation after authenticated scheduled verification
+- [x] Redeploy the daily dashboard email route before re-enabling the recurring job
+- [x] Trigger and verify a real authenticated Heartbeat callback, including an application-written delivery timestamp
+- [x] Reconfirm schedule-management documentation after the real Heartbeat verification
+- [x] Inspect the user-initiated Run Now execution and its delivery record
 - [x] Send the user-approved one-time test export to stephend@nutun.com
 
 ## Daily PDF Dashboard Report
 - [x] Generate a readable PDF report from the current dashboard snapshot
 - [x] Attach the PDF report alongside the JSON restore backup in daily emails
-- [ ] Deploy and verify the PDF-enhanced email delivery workflow
+- [x] Deploy and verify the PDF-enhanced email delivery workflow
