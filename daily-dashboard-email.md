@@ -1,6 +1,6 @@
 # Daily Dashboard Email Export
 
-The dashboard is configured to send a JSON export from `stephen.deblanche@gmail.com` to `stephend@nutun.com` each day at **19:00 SAST**. The attached file is named `stephens-todo-dashboard-YYYY-MM-DD.json` and can be imported through the dashboard’s existing **Import snapshot** control.
+The dashboard is configured to send a readable PDF report and a JSON export from `stephen.deblanche@gmail.com` to `stephend@nutun.com` each day at **19:00 SAST**. The PDF file, named `stephens-todo-dashboard-report-YYYY-MM-DD.pdf`, is the attachment to open on a phone, tablet, or computer. It contains an overview and the category-by-category task list. The JSON file, named `stephens-todo-dashboard-YYYY-MM-DD.json`, is a restore backup rather than a document to read; use it only through the dashboard’s **Import snapshot** control.
 
 The recurring job is named `daily-dashboard-export-email` and runs at `17:00 UTC`, which corresponds to 19:00 SAST. It is enabled by default.
 

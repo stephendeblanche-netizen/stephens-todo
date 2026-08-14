@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./dashboardExport", () => ({ buildDashboardExport: mocks.buildDashboardExport }));
+vi.mock("./dashboardPdfReport", () => ({ createDashboardPdfReport: vi.fn().mockResolvedValue(Buffer.from("%PDF-test")) }));
 vi.mock("nodemailer", () => ({ default: { createTransport: mocks.createTransport } }));
 
 import { sendDailyDashboardExport } from "./dailyDashboardEmail";
@@ -25,7 +26,10 @@ describe("daily dashboard email", () => {
     expect(mocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
       to: "stephend@nutun.com",
       subject: "Stephen's To-Do Dashboard export — 2026-08-14",
-      attachments: [expect.objectContaining({ filename: "stephens-todo-dashboard-2026-08-14.json", contentType: "application/json" })],
+      attachments: [
+        expect.objectContaining({ filename: "stephens-todo-dashboard-report-2026-08-14.pdf", contentType: "application/pdf" }),
+        expect.objectContaining({ filename: "stephens-todo-dashboard-2026-08-14.json", contentType: "application/json" }),
+      ],
     }));
     expect(result).toEqual({ messageId: "smtp-message-id", exportDate: "2026-08-14" });
   });

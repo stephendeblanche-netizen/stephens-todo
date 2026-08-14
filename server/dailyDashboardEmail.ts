@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { buildDashboardExport } from "./dashboardExport";
+import { createDashboardPdfReport } from "./dashboardPdfReport";
 import { getDashboardEmailScheduleByTaskUid, markDashboardEmailScheduleSent } from "./db";
 
 const formatExportDate = (date: Date) => date.toISOString().slice(0, 10);
@@ -14,6 +15,7 @@ export async function sendDailyDashboardExport(recipient: string, now = new Date
 
   const snapshot = await buildDashboardExport();
   const exportDate = formatExportDate(now);
+  const pdfReport = await createDashboardPdfReport(snapshot);
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 465,
@@ -28,12 +30,19 @@ export async function sendDailyDashboardExport(recipient: string, now = new Date
     from: `Stephen's To-Do Dashboard <${ENV.gmailSmtpUser}>`,
     to: recipient,
     subject: `Stephen's To-Do Dashboard export — ${exportDate}`,
-    text: "Attached is the daily JSON export of Stephen's To-Do Dashboard.",
-    attachments: [{
-      filename: `stephens-todo-dashboard-${exportDate}.json`,
-      content: JSON.stringify(snapshot, null, 2),
-      contentType: "application/json",
-    }],
+    text: "Attached are a readable PDF task report and the daily JSON backup of Stephen's To-Do Dashboard. Use the PDF for reading and the JSON file only to restore a dashboard snapshot through the app's Import snapshot control.",
+    attachments: [
+      {
+        filename: `stephens-todo-dashboard-report-${exportDate}.pdf`,
+        content: pdfReport,
+        contentType: "application/pdf",
+      },
+      {
+        filename: `stephens-todo-dashboard-${exportDate}.json`,
+        content: JSON.stringify(snapshot, null, 2),
+        contentType: "application/json",
+      },
+    ],
   });
 
   return { messageId: info.messageId, exportDate };

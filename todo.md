@@ -190,3 +190,8 @@
 - [ ] Trigger and verify an authenticated scheduled callback, including an application-written delivery timestamp
 - [ ] Reconfirm schedule-management documentation after authenticated scheduled verification
 - [x] Send the user-approved one-time test export to stephend@nutun.com
+
+## Daily PDF Dashboard Report
+- [x] Generate a readable PDF report from the current dashboard snapshot
+- [x] Attach the PDF report alongside the JSON restore backup in daily emails
+- [ ] Deploy and verify the PDF-enhanced email delivery workflow
