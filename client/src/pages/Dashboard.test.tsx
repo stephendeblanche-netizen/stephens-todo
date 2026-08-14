@@ -448,4 +448,42 @@ describe("Dashboard focused priority views", () => {
 
     expect(fixture.updateEmailSettingsMutate).not.toHaveBeenCalled();
   });
+
+  it("toggles a task detail panel below the row when the priority flag is clicked", async () => {
+    const user = userEvent.setup();
+    fixture.tasks[0]!.dueAt = null;
+    renderDashboard("all");
+
+    const flagButtons = screen.getAllByRole("button", { name: "Toggle details for Urgent high today" });
+    await user.click(flagButtons[0]!);
+    expect(screen.getByRole("region", { name: "Task details for Urgent high today" })).not.toBeNull();
+    expect(screen.getByLabelText("Accountable Direct Report details for Urgent high today")).not.toBeNull();
+    const detailNotes = screen.getByLabelText("Notes in task details for Urgent high today");
+    await user.clear(detailNotes);
+    await user.type(detailNotes, "Updated through priority details");
+    await user.tab();
+    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, note: "Updated through priority details" });
+
+    await user.click(flagButtons[0]!);
+    expect(screen.queryByRole("region", { name: "Task details for Urgent high today" })).toBeNull();
+  });
+
+  it("keeps priority-flag detail notes editable at a narrow mobile viewport", async () => {
+    const user = userEvent.setup();
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    window.dispatchEvent(new Event("resize"));
+    fixture.tasks[0]!.dueAt = null;
+
+    renderDashboard("all");
+    await user.click(screen.getAllByRole("button", { name: "Toggle details for Urgent high today" })[0]!);
+    const detailNotes = screen.getByLabelText("Notes in task details for Urgent high today") as HTMLTextAreaElement;
+    expect(detailNotes).not.toBeNull();
+    await user.clear(detailNotes);
+    await user.type(detailNotes, "Mobile detail note");
+    await user.tab();
+    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, note: "Mobile detail note" });
+
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+  });
 });

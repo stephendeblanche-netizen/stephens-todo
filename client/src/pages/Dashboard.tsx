@@ -553,13 +553,18 @@ function TaskItem({
             onClick={(e) => e.stopPropagation()}
             title="Shortcuts: Alt + ↑ / ↓ moves; Tab indents; Shift + Tab outdents; Ctrl/Cmd + Enter completes; Ctrl/Cmd + Shift + 1/2/3 sets priority; Ctrl/Cmd + Shift + Backspace deletes."
           />
-          <span
-            className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
+          <button
+            className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-[inherit]"
             style={{ color: priorityMeta(node.priority).color, background: "var(--page-plane)" }}
-            title={`${priorityMeta(node.priority).label} priority`}
+            title={dueOpen ? "Hide task details" : "Show task details"}
+            aria-label={`Toggle details for ${node.text}`}
+            aria-expanded={dueOpen}
+            aria-controls={`task-detail-panel-${node.id}`}
+            onClick={(event) => { event.stopPropagation(); setDueOpen((value) => !value); }}
+            type="button"
           >
             <Flag size={9} fill="currentColor" /> {priorityMeta(node.priority).label}
-          </span>
+          </button>
           <select
             value={node.accountableDirectReportId ?? "na"}
             onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
@@ -630,8 +635,11 @@ function TaskItem({
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: priorityMeta(node.priority).color, background: "transparent", border: "none" }}
-              title={`${priorityMeta(node.priority).label} priority`}
-              onClick={(e) => { e.stopPropagation(); setDueOpen(true); }}
+              title={dueOpen ? "Hide task details" : "Show task details"}
+              aria-label={`Toggle details for ${node.text}`}
+              aria-expanded={dueOpen}
+              aria-controls={`task-detail-panel-${node.id}`}
+              onClick={(e) => { e.stopPropagation(); setDueOpen((value) => !value); }}
               type="button"
             >
               <Flag size={11} fill="currentColor" />
@@ -712,7 +720,7 @@ function TaskItem({
 
         {/* Task schedule and priority editor */}
         {dueOpen && (
-          <div className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2">
+          <div id={`task-detail-panel-${node.id}`} role="region" aria-label={`Task details for ${node.text}`} className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
             <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Due</label>
             <input
               type="date"
@@ -763,6 +771,29 @@ function TaskItem({
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
+            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Accountable</label>
+            <select
+              value={node.accountableDirectReportId ?? "na"}
+              onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
+              className="h-7 max-w-[160px] rounded-md border px-2 text-[11px] font-[inherit]"
+              style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+              aria-label={`Accountable Direct Report details for ${node.text}`}
+            >
+              <option value="na">N/A</option>
+              {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
+            </select>
+            <div className="basis-full pt-0.5">
+              <label className="mb-1 inline-flex items-center gap-1 text-[11px]" style={{ color: "var(--text-secondary)" }}><StickyNote size={10} /> Notes</label>
+              <textarea
+                className="block min-h-[48px] w-full max-w-md resize-y rounded-md border px-2 py-1.5 text-[12px] font-[inherit] focus:outline-none"
+                style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+                placeholder="Add a note…"
+                defaultValue={node.note}
+                onBlur={(event) => onUpdate(node.id, { note: event.target.value })}
+                onClick={(event) => event.stopPropagation()}
+                aria-label={`Notes in task details for ${node.text}`}
+              />
+            </div>
           </div>
         )}
 

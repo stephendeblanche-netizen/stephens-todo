@@ -203,3 +203,9 @@
 - [x] Update the recurring schedule safely when the delivery time changes
 - [x] Test invalid recipient and delivery-time validation in the email settings panel
 - [x] Reconfirm complete email settings validation, saving, schedule updates, and responsive layout coverage
+
+## Priority Flag Detail Toggle
+- [x] Make the task priority flag toggle a detail panel beneath its task row
+- [x] Add notes viewing and editing directly inside the priority-flag-expanded detail panel
+- [x] Test priority-flag expansion and inline notes editing at a narrow mobile viewport
+- [x] Reconfirm desktop and mobile visual layout after adding inline detail notes
