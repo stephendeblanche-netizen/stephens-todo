@@ -64,6 +64,7 @@ export const dashboardEmailSchedules = mysqlTable("dashboard_email_schedules", {
   id: int("id").autoincrement().primaryKey(),
   sender: varchar("sender", { length: 320 }).notNull(),
   recipient: varchar("recipient", { length: 320 }).notNull(),
+  deliveryTimeSast: varchar("deliveryTimeSast", { length: 5 }).default("19:00").notNull(),
   scheduleCronTaskUid: varchar("schedule_cron_task_uid", { length: 65 }),
   enabled: boolean("enabled").default(true).notNull(),
   lastSentAt: timestamp("lastSentAt"),

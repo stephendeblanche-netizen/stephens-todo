@@ -1,5 +1,7 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
 import {
   canStartMobileSwipe,
   clampSwipeOffset,
@@ -59,6 +61,9 @@ import {
   StickyNote,
   Repeat2,
   ShieldCheck,
+  Mail,
+  Clock3,
+  Save,
   X,
 } from "lucide-react";
 import {
@@ -1248,12 +1253,15 @@ function CategoryCard({
 // ---- Main Dashboard ----
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
+  const { user, loading: authLoading } = useAuth();
   const utils = trpc.useUtils();
+  const canManageEmailSettings = user?.role === "admin";
 
   const { data: categoriesData = [], isLoading: catsLoading } = trpc.categories.list.useQuery();
   const { data: tasksData = [], isLoading: tasksLoading } = trpc.tasks.listAll.useQuery();
   const { data: savedFilters = [] } = trpc.filters.list.useQuery();
   const { data: directReports = [] } = trpc.directReports.list.useQuery();
+  const emailSettingsQuery = trpc.dashboardEmailSettings.get.useQuery(undefined, { enabled: canManageEmailSettings });
 
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -1279,6 +1287,8 @@ export default function Dashboard() {
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(() => new Set());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailDeliveryTime, setEmailDeliveryTime] = useState("19:00");
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1305,6 +1315,14 @@ export default function Dashboard() {
   const importMut = trpc.data.import.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
+  });
+  const updateEmailSettingsMut = trpc.dashboardEmailSettings.update.useMutation({
+    onSuccess: (result) => {
+      utils.dashboardEmailSettings.get.invalidate();
+      toast.success(`Daily email updated. Next delivery is scheduled for ${emailDeliveryTime} SAST.`);
+      if (result.nextExecutionAt) toast.message(`Next run: ${new Date(result.nextExecutionAt).toLocaleString()}`);
+    },
+    onError: (error) => toast.error(error.message || "Could not update daily email settings."),
   });
 
   const effectiveActiveCats = useMemo(() => {
@@ -1384,6 +1402,12 @@ export default function Dashboard() {
       return retained.size === current.size ? current : retained;
     });
   }, [tasksData]);
+
+  useEffect(() => {
+    if (!emailSettingsQuery.data) return;
+    setEmailRecipient(emailSettingsQuery.data.recipient);
+    setEmailDeliveryTime(emailSettingsQuery.data.deliveryTimeSast);
+  }, [emailSettingsQuery.data]);
 
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
@@ -1549,6 +1573,19 @@ export default function Dashboard() {
       },
     });
   }, [newDirectReportName, createDirectReportMut, directReports.length]);
+
+  const handleSaveEmailSettings = useCallback(() => {
+    const recipient = emailRecipient.trim();
+    if (!/^\S+@\S+\.\S+$/.test(recipient)) {
+      toast.error("Enter a valid recipient email address.");
+      return;
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(emailDeliveryTime)) {
+      toast.error("Enter a valid 24-hour delivery time.");
+      return;
+    }
+    updateEmailSettingsMut.mutate({ recipient, deliveryTimeSast: emailDeliveryTime });
+  }, [emailDeliveryTime, emailRecipient, updateEmailSettingsMut]);
 
   const handleDeleteDirectReport = useCallback((report: DirectReport) => {
     deleteDirectReportMut.mutate({ id: report.id });
@@ -2070,6 +2107,43 @@ export default function Dashboard() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </section>
+
+          <section aria-label="Daily email settings" className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="m-0 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}><Mail size={14} /> Daily email delivery</h2>
+                <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Receive a readable PDF task report and a JSON restore backup each day.</p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--status-good)", background: "var(--drop-wash)" }}><Clock3 size={10} /> SAST (UTC+2)</span>
+            </div>
+            {authLoading ? (
+              <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Checking delivery permissions…</p>
+            ) : !canManageEmailSettings ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Sign in as the dashboard owner to change the recipient or delivery time.</p>
+                <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} type="button" onClick={() => startLogin()}>
+                  Sign in to manage
+                </button>
+              </div>
+            ) : emailSettingsQuery.isLoading ? (
+              <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Loading daily email settings…</p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-[220px] flex-1 text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                  Recipient email
+                  <input className="mt-1 w-full rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }} type="email" value={emailRecipient} onChange={(event) => setEmailRecipient(event.target.value)} aria-label="Daily email recipient" />
+                </label>
+                <label className="w-[145px] text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                  Delivery time
+                  <input className="mt-1 w-full rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)", outline: "none" }} type="time" value={emailDeliveryTime} onChange={(event) => setEmailDeliveryTime(event.target.value)} aria-label="Daily email delivery time in SAST" />
+                </label>
+                <button className="inline-flex h-[38px] items-center gap-1.5 rounded-lg border px-3 text-[12px] font-[inherit] disabled:cursor-not-allowed disabled:opacity-60" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleSaveEmailSettings} disabled={updateEmailSettingsMut.isPending}>
+                  <Save size={13} /> {updateEmailSettingsMut.isPending ? "Saving…" : "Save delivery"}
+                </button>
+                {emailSettingsQuery.data?.lastSentAt && <p className="m-0 basis-full text-[10.5px]" style={{ color: "var(--text-muted)" }}>Last sent: {new Date(emailSettingsQuery.data.lastSentAt).toLocaleString()}</p>}
               </div>
             )}
           </section>

@@ -2,7 +2,10 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, publicProcedure, router } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
+import { parse as parseCookie } from "cookie";
+import { updateHeartbeatJob } from "./_core/heartbeat";
 import {
   getAllCategories,
   getAllTasks,
@@ -21,12 +24,20 @@ import {
   updateDirectReport,
   deleteDirectReport,
   replaceAllData,
+  getDashboardEmailSchedule,
+  updateDashboardEmailSchedule,
 } from "./db";
 import { cascadeCategoryId, getDescendantIds } from "./db";
 import { eq, and, isNull } from "drizzle-orm";
 import { tasks as tasksTable } from "../drizzle/schema";
 import { getDb } from "./db";
 import { buildDashboardExport } from "./dashboardExport";
+
+function cronFromSastTime(deliveryTimeSast: string) {
+  const [hour, minute] = deliveryTimeSast.split(":").map(Number);
+  const utcHour = (hour + 22) % 24;
+  return `0 ${minute} ${utcHour} * * *`;
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -38,6 +49,34 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  dashboardEmailSettings: router({
+    get: adminProcedure.query(async () => {
+      const schedule = await getDashboardEmailSchedule();
+      if (!schedule) throw new TRPCError({ code: "NOT_FOUND", message: "Daily email settings are not configured." });
+      return schedule;
+    }),
+    update: adminProcedure
+      .input(z.object({
+        recipient: z.string().trim().email().max(320),
+        deliveryTimeSast: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a valid 24-hour time."),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const schedule = await getDashboardEmailSchedule();
+        if (!schedule?.scheduleCronTaskUid) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "The daily email schedule is not configured." });
+        }
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const cron = cronFromSastTime(input.deliveryTimeSast);
+        const updateResult = await updateHeartbeatJob(schedule.scheduleCronTaskUid, {
+          cron,
+          description: `Send Stephen's To-Do Dashboard PDF report and JSON backup daily at ${input.deliveryTimeSast} SAST to ${input.recipient}.`,
+          enable: true,
+        }, sessionToken);
+        await updateDashboardEmailSchedule(schedule.id, input);
+        return { success: true, cron, nextExecutionAt: updateResult.nextExecutionAt ?? null };
+      }),
   }),
 
   // ---- Categories ----

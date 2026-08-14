@@ -164,6 +164,19 @@ export async function getDashboardEmailScheduleByTaskUid(taskUid: string): Promi
   return result[0];
 }
 
+export async function getDashboardEmailSchedule(): Promise<DashboardEmailSchedule | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(dashboardEmailSchedules).orderBy(asc(dashboardEmailSchedules.id)).limit(1);
+  return result[0];
+}
+
+export async function updateDashboardEmailSchedule(id: number, data: { recipient: string; deliveryTimeSast: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(dashboardEmailSchedules).set(data).where(eq(dashboardEmailSchedules.id, id));
+}
+
 export async function markDashboardEmailScheduleSent(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");

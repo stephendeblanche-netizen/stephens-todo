@@ -196,3 +196,10 @@
 - [x] Generate a readable PDF report from the current dashboard snapshot
 - [x] Attach the PDF report alongside the JSON restore backup in daily emails
 - [x] Deploy and verify the PDF-enhanced email delivery workflow
+
+## Dashboard Email Settings
+- [x] Add a dashboard settings panel for the daily email recipient and delivery time
+- [x] Validate and persist recipient and 24-hour SAST delivery-time updates
+- [x] Update the recurring schedule safely when the delivery time changes
+- [x] Test invalid recipient and delivery-time validation in the email settings panel
+- [x] Reconfirm complete email settings validation, saving, schedule updates, and responsive layout coverage

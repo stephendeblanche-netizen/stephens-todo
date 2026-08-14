@@ -31,6 +31,12 @@ const fixture = vi.hoisted(() => ({
   taskDeleteMutate: vi.fn(),
   reorderTaskMutate: vi.fn(),
   createDirectReportMutate: vi.fn(),
+  updateEmailSettingsMutate: vi.fn(),
+  emailSettings: { id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "cron-1", enabled: true, lastSentAt: null },
+}));
+
+vi.mock("@/_core/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: 1, role: "admin" }, loading: false }),
 }));
 
 vi.mock("@/lib/trpc", () => ({
@@ -40,6 +46,7 @@ vi.mock("@/lib/trpc", () => ({
       tasks: { listAll: { invalidate: vi.fn() } },
       filters: { list: { invalidate: vi.fn() } },
       directReports: { list: { invalidate: vi.fn() } },
+      dashboardEmailSettings: { get: { invalidate: vi.fn() } },
     }),
     categories: {
       list: { useQuery: () => ({ data: fixture.categories, isLoading: false }) },
@@ -60,6 +67,10 @@ vi.mock("@/lib/trpc", () => ({
       create: { useMutation: () => ({ mutate: fixture.createDirectReportMutate }) },
       update: { useMutation: () => ({ mutate: vi.fn() }) },
       delete: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
+    dashboardEmailSettings: {
+      get: { useQuery: () => ({ data: fixture.emailSettings, isLoading: false }) },
+      update: { useMutation: () => ({ mutate: fixture.updateEmailSettingsMutate, isPending: false }) },
     },
     data: {
       export: { useQuery: () => ({ refetch: vi.fn() }) },
@@ -94,6 +105,7 @@ describe("Dashboard focused priority views", () => {
     fixture.taskDeleteMutate.mockReset();
     fixture.reorderTaskMutate.mockReset();
     fixture.createDirectReportMutate.mockReset();
+    fixture.updateEmailSettingsMutate.mockReset();
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
     ];
@@ -401,5 +413,39 @@ describe("Dashboard focused priority views", () => {
     );
 
     Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+  });
+
+  it("shows and saves editable daily email settings for the dashboard owner", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    expect((screen.getByLabelText("Daily email recipient") as HTMLInputElement).value).toBe("stephend@nutun.com");
+    expect((screen.getByLabelText("Daily email delivery time in SAST") as HTMLInputElement).value).toBe("19:00");
+    await user.clear(screen.getByLabelText("Daily email recipient"));
+    await user.type(screen.getByLabelText("Daily email recipient"), "reports@example.com");
+    await user.clear(screen.getByLabelText("Daily email delivery time in SAST"));
+    await user.type(screen.getByLabelText("Daily email delivery time in SAST"), "18:30");
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+
+    expect(fixture.updateEmailSettingsMutate).toHaveBeenCalledWith({ recipient: "reports@example.com", deliveryTimeSast: "18:30" });
+  });
+
+  it("blocks saving daily email settings with an invalid recipient", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.clear(screen.getByLabelText("Daily email recipient"));
+    await user.type(screen.getByLabelText("Daily email recipient"), "not-an-email");
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+
+    expect(fixture.updateEmailSettingsMutate).not.toHaveBeenCalled();
+  });
+
+  it("blocks saving daily email settings without a valid 24-hour delivery time", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    await user.clear(screen.getByLabelText("Daily email delivery time in SAST"));
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+
+    expect(fixture.updateEmailSettingsMutate).not.toHaveBeenCalled();
   });
 });

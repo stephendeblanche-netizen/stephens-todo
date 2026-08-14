@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
+import { updateHeartbeatJob } from "./_core/heartbeat";
+import { updateDashboardEmailSchedule } from "./db";
 
 // Mock the db module so tests don't need a real database
 vi.mock("./db", () => ({
@@ -36,6 +38,12 @@ vi.mock("./db", () => ({
   cascadeCategoryId: vi.fn().mockResolvedValue(undefined),
   getDescendantIds: vi.fn().mockResolvedValue([]),
   getDb: vi.fn().mockResolvedValue(null),
+  getDashboardEmailSchedule: vi.fn().mockResolvedValue({ id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "schedule-uid", enabled: true, lastSentAt: null }),
+  updateDashboardEmailSchedule: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./_core/heartbeat", () => ({
+  updateHeartbeatJob: vi.fn().mockResolvedValue({ nextExecutionAt: "2026-08-14T16:30:00.000Z" }),
 }));
 
 function createCtx(): TrpcContext {
@@ -45,6 +53,37 @@ function createCtx(): TrpcContext {
     res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
   };
 }
+
+function createAdminCtx(): TrpcContext {
+  return {
+    ...createCtx(),
+    user: {
+      id: 1,
+      openId: "owner",
+      name: "Dashboard Owner",
+      email: "stephen.deblanche@gmail.com",
+      loginMethod: "google",
+      role: "admin",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    },
+    req: { protocol: "https", headers: { cookie: "app_session_id=owner-token" } } as TrpcContext["req"],
+  };
+}
+
+describe("dashboard email settings router", () => {
+  it("returns and updates the recipient and SAST schedule through the Heartbeat job", async () => {
+    const caller = appRouter.createCaller(createAdminCtx());
+    const settings = await caller.dashboardEmailSettings.get();
+    expect(settings.recipient).toBe("stephend@nutun.com");
+
+    const result = await caller.dashboardEmailSettings.update({ recipient: "reports@example.com", deliveryTimeSast: "18:30" });
+    expect(result).toEqual({ success: true, cron: "0 30 16 * * *", nextExecutionAt: "2026-08-14T16:30:00.000Z" });
+    expect(updateHeartbeatJob).toHaveBeenCalledWith("schedule-uid", expect.objectContaining({ cron: "0 30 16 * * *", enable: true }), "owner-token");
+    expect(updateDashboardEmailSchedule).toHaveBeenCalledWith(1, { recipient: "reports@example.com", deliveryTimeSast: "18:30" });
+  });
+});
 
 describe("categories router", () => {
   it("lists all categories", async () => {

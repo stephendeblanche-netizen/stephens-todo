@@ -1,0 +1,1 @@
+ALTER TABLE `dashboard_email_schedules` ADD `deliveryTimeSast` varchar(5) DEFAULT '19:00' NOT NULL;
