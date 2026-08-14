@@ -1,4 +1,4 @@
-import { bigint, boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 // Core user table backing auth flow
 export const users = mysqlTable("users", {
@@ -58,6 +58,22 @@ export const directReports = mysqlTable("direct_reports", {
 
 export type DirectReport = typeof directReports.$inferSelect;
 export type InsertDirectReport = typeof directReports.$inferInsert;
+
+// Project-level configuration for the owner’s scheduled dashboard backup email.
+export const dashboardEmailSchedules = mysqlTable("dashboard_email_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  sender: varchar("sender", { length: 320 }).notNull(),
+  recipient: varchar("recipient", { length: 320 }).notNull(),
+  scheduleCronTaskUid: varchar("schedule_cron_task_uid", { length: 65 }),
+  enabled: boolean("enabled").default(true).notNull(),
+  lastSentAt: timestamp("lastSentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("dashboard_email_schedule_task_uid_idx").on(table.scheduleCronTaskUid),
+]);
+
+export type DashboardEmailSchedule = typeof dashboardEmailSchedules.$inferSelect;
 
 // Tasks table — supports unlimited nesting via parentId self-reference
 export const tasks = mysqlTable("tasks", {

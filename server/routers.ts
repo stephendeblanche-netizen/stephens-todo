@@ -26,6 +26,7 @@ import { cascadeCategoryId, getDescendantIds } from "./db";
 import { eq, and, isNull } from "drizzle-orm";
 import { tasks as tasksTable } from "../drizzle/schema";
 import { getDb } from "./db";
+import { buildDashboardExport } from "./dashboardExport";
 
 export const appRouter = router({
   system: systemRouter,
@@ -286,13 +287,7 @@ export const appRouter = router({
 
   // ---- Export / Import ----
   data: router({
-    export: publicProcedure.query(async () => {
-      const cats = await getAllCategories();
-      const allTasks = await getAllTasks();
-      const filters = await getAllSavedFilters();
-      const reports = await getAllDirectReports();
-      return { categories: cats, tasks: allTasks, filters, directReports: reports, exportedAt: new Date().toISOString() };
-    }),
+    export: publicProcedure.query(async () => buildDashboardExport()),
 
     import: publicProcedure
       .input(z.object({

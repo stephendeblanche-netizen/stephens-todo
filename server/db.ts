@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, categories, directReports, savedFilters, tasks, users } from "../drizzle/schema";
+import { DashboardEmailSchedule, InsertUser, categories, dashboardEmailSchedules, directReports, savedFilters, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -152,6 +152,22 @@ export async function deleteDirectReport(id: number) {
   if (!db) throw new Error("DB unavailable");
   await db.update(tasks).set({ accountableDirectReportId: null }).where(eq(tasks.accountableDirectReportId, id));
   await db.delete(directReports).where(eq(directReports.id, id));
+}
+
+// ---- Scheduled dashboard email ----
+
+export async function getDashboardEmailScheduleByTaskUid(taskUid: string): Promise<DashboardEmailSchedule | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(dashboardEmailSchedules)
+    .where(eq(dashboardEmailSchedules.scheduleCronTaskUid, taskUid)).limit(1);
+  return result[0];
+}
+
+export async function markDashboardEmailScheduleSent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(dashboardEmailSchedules).set({ lastSentAt: new Date() }).where(eq(dashboardEmailSchedules.id, id));
 }
 
 // ---- Tasks ----

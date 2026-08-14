@@ -181,3 +181,10 @@
 - [x] Add bulk move and indent actions for selected compatible tasks
 - [x] Add keyboard shortcuts to complete, delete, and change task priority
 - [x] Test shortcut discovery, multi-select actions, and expanded keyboard task commands
+
+## Daily Dashboard Email Export
+- [x] Confirm daily delivery from stephen.deblanche@gmail.com to stephend@nutun.com at 19:00 SAST
+- [x] Select fully automatic delivery rather than a manually approved Gmail draft
+- [x] Obtain and validate an unattended Gmail sending credential for stephen.deblanche@gmail.com
+- [ ] Add a scheduled daily dashboard snapshot export and email delivery workflow
+- [ ] Test the delivery path and document how to adjust or disable the schedule
