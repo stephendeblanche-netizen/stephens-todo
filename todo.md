@@ -169,3 +169,8 @@
 - [x] Add deterministic pointer/touch drag-end placement parity coverage
 - [x] Route pointer and touch activator paths through a shared drag-end placement abstraction
 - [x] Test sensor-specific activator detection and identical placement payloads for both paths
+
+## Non-Drag Task Movement
+- [x] Add a task-level Move to control for category and parent reassignment
+- [x] Add keyboard shortcuts for moving tasks up, down, nesting, and outdenting
+- [x] Test non-drag and keyboard task movement behavior across hierarchical lists

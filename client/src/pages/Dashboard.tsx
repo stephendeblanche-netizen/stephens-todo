@@ -21,8 +21,21 @@ import { calendarMonthDays, dateKey, filterTasksByPriority, groupTasksByDay } fr
 import { applySavedFilter, matchesDueRange, type DueRange } from "@/lib/savedFilters";
 import { filterTasksByDirectReport, matchesDirectReport, type DirectReportFilter } from "@/lib/directReports";
 import { canNestTask } from "@/lib/taskNesting";
-import { buildSensorTaskPlacementUpdates, getDragActivator } from "@/lib/taskDrop";
+import { buildSensorTaskPlacementUpdates, buildTaskPlacementUpdates, getDragActivator, type TaskDropDestination } from "@/lib/taskDrop";
+import { getKeyboardTaskDestination, type TaskMovementDirection } from "@/lib/taskMovement";
+import { useComposition } from "@/hooks/useComposition";
 import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -246,10 +259,14 @@ interface TaskItemProps {
   directReportFilter: DirectReportFilter;
   directReports: DirectReport[];
   allCatTasks: Task[];
+  allTasks: Task[];
+  categories: Category[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
   onSwipeDelete: (id: number, text: string) => void;
   onAddChild: (parentId: number, categoryId: number) => void;
+  onMoveTask: (id: number, destination: TaskDropDestination) => void;
+  onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
   isDragOverlay?: boolean;
@@ -257,7 +274,7 @@ interface TaskItemProps {
 
 function TaskItem({
   node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, allCatTasks,
-  onUpdate, onDelete, onSwipeDelete, onAddChild,
+  allTasks, categories, onUpdate, onDelete, onSwipeDelete, onAddChild, onMoveTask, onKeyboardMove,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
 }: TaskItemProps) {
@@ -276,6 +293,7 @@ function TaskItem({
     currentOffset: 0,
   });
   const isNew = newTaskId === node.id;
+  const titleComposition = useComposition<HTMLInputElement>();
 
   const {
     attributes,
@@ -309,6 +327,33 @@ function TaskItem({
   if (directReportFilter !== "all" && !matchesDirectReportTree(node, directReportFilter) && !isDragOverlay) return null;
 
   const hasChildren = node.children.length > 0;
+  const possibleParentTasks = allTasks
+    .filter((candidate) => candidate.id !== node.id && candidate.id !== node.parentId && canNestTask(allTasks, node.id, candidate.id))
+    .sort((left, right) => {
+      const leftCategory = categories.find((category) => category.id === left.categoryId)?.sortOrder ?? 0;
+      const rightCategory = categories.find((category) => category.id === right.categoryId)?.sortOrder ?? 0;
+      return leftCategory - rightCategory || left.sortOrder - right.sortOrder || left.id - right.id;
+    });
+
+  const handleTitleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    titleComposition.onKeyDown(event);
+    if (titleComposition.isComposing() || event.nativeEvent.isComposing) return;
+
+    if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      onKeyboardMove(node.id, event.key === "ArrowUp" ? "up" : "down");
+      return;
+    }
+
+    if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      onKeyboardMove(node.id, event.shiftKey ? "outdent" : "indent");
+      return;
+    }
+
+    if (event.key === "Enter") { event.preventDefault(); (event.target as HTMLInputElement).blur(); }
+    else if (event.key === "Escape") { (event.target as HTMLInputElement).value = node.text; (event.target as HTMLInputElement).blur(); }
+  };
 
   const handleSwipeStart = (event: React.PointerEvent<HTMLDivElement>) => {
     // Keep native scrolling, inline editing, controls, and dnd-kit handles intact.
@@ -461,14 +506,14 @@ function TaskItem({
               if (val !== node.text) onUpdate(node.id, { text: val });
               if (isNew && onNewTaskCommitted) onNewTaskCommitted();
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
-              else if (e.key === "Escape") { (e.target as HTMLInputElement).value = node.text; (e.target as HTMLInputElement).blur(); }
-            }}
+            onKeyDown={handleTitleKeyDown}
+            onCompositionStart={titleComposition.onCompositionStart}
+            onCompositionEnd={titleComposition.onCompositionEnd}
             onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
             onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
+            title="Shortcuts: Alt + ↑ / ↓ moves the task; Tab indents; Shift + Tab outdents."
           />
           <span
             className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
@@ -491,6 +536,59 @@ function TaskItem({
 
           {/* Toolbar */}
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="h-5 rounded px-1 text-[10px] font-medium transition-colors"
+                  style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
+                  title="Move to…"
+                  aria-label={`Move ${node.text}`}
+                  type="button"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  Move
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64" onPointerDown={(event) => event.stopPropagation()}>
+                <DropdownMenuLabel className="truncate">Move “{node.text}”</DropdownMenuLabel>
+                <DropdownMenuLabel className="pt-0 text-[10px] font-normal" style={{ color: "var(--text-muted)" }}>
+                  Alt + ↑ / ↓ reorders · Tab indents · Shift + Tab outdents
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {categories.map((destinationCategory) => {
+                  const isCurrentRoot = node.categoryId === destinationCategory.id && (node.parentId ?? null) === null;
+                  const topLevelCount = allTasks.filter((task) => task.categoryId === destinationCategory.id && (task.parentId ?? null) === null).length;
+                  return (
+                    <DropdownMenuItem
+                      key={destinationCategory.id}
+                      disabled={isCurrentRoot}
+                      onSelect={() => onMoveTask(node.id, { categoryId: destinationCategory.id, parentId: null, index: topLevelCount })}
+                    >
+                      Move to {destinationCategory.name}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>Make sub-task of…</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-72 w-72 overflow-y-auto">
+                    {possibleParentTasks.length > 0 ? possibleParentTasks.map((parentTask) => {
+                      const parentCategory = categories.find((category) => category.id === parentTask.categoryId);
+                      const childCount = allTasks.filter((task) => task.categoryId === parentTask.categoryId && (task.parentId ?? null) === parentTask.id).length;
+                      return (
+                        <DropdownMenuItem
+                          key={parentTask.id}
+                          className="max-w-[17rem] truncate"
+                          onSelect={() => onMoveTask(node.id, { categoryId: parentTask.categoryId, parentId: parentTask.id, index: childCount })}
+                        >
+                          {parentCategory?.name ?? "Category"} → {parentTask.text}
+                        </DropdownMenuItem>
+                      );
+                    }) : <DropdownMenuItem disabled>No valid parent tasks</DropdownMenuItem>}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: priorityMeta(node.priority).color, background: "transparent", border: "none" }}
@@ -700,10 +798,14 @@ function TaskItem({
                     directReportFilter={directReportFilter}
                     directReports={directReports}
                     allCatTasks={allCatTasks}
+                    allTasks={allTasks}
+                    categories={categories}
                     onUpdate={onUpdate}
                     onDelete={onDelete}
                     onSwipeDelete={onSwipeDelete}
                     onAddChild={onAddChild}
+                    onMoveTask={onMoveTask}
+                    onKeyboardMove={onKeyboardMove}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={onNewTaskCommitted}
                   />
@@ -892,20 +994,24 @@ interface CategoryCardProps {
   dueRange: DueRange;
   directReportFilter: DirectReportFilter;
   directReports: DirectReport[];
+  categories: Category[];
+  allTasks: Task[];
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
   onDeleteTask: (id: number, text: string) => void;
   onSwipeDelete: (id: number, text: string) => void;
   onAddTask: (catId: number, parentId?: number) => void;
+  onMoveTask: (id: number, destination: TaskDropDestination) => void;
+  onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
   onClearCompleted: (catId: number) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
 }
 
 function CategoryCard({
-  cat, tasks, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onClearCompleted,
+  cat, tasks, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, categories, allTasks,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onMoveTask, onKeyboardMove, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
   const tree = useMemo(() => buildTree(tasks), [tasks]);
@@ -1051,10 +1157,14 @@ function CategoryCard({
                     directReportFilter={directReportFilter}
                     directReports={directReports}
                     allCatTasks={tasks}
+                    allTasks={allTasks}
+                    categories={categories}
                     onUpdate={onUpdateTask}
                     onDelete={onDeleteTask}
                     onSwipeDelete={onSwipeDelete}
                     onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
+                    onMoveTask={onMoveTask}
+                    onKeyboardMove={onKeyboardMove}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={onNewTaskCommitted}
                   />
@@ -1309,6 +1419,36 @@ export default function Dashboard() {
       }
     );
   }, [createTaskMut, tasksData, utils]);
+
+  const handleMoveTask = useCallback((id: number, destination: TaskDropDestination) => {
+    const task = tasksData.find((candidate) => candidate.id === id);
+    if (!task) return;
+    const updates = buildTaskPlacementUpdates(tasksData, id, destination);
+    if (!updates) {
+      toast.error("That task cannot be moved into one of its own sub-tasks.");
+      return;
+    }
+    reorderTaskMut.mutate(updates);
+    const destinationCategory = categoriesData.find((category) => category.id === destination.categoryId);
+    const destinationParent = destination.parentId === null ? null : tasksData.find((candidate) => candidate.id === destination.parentId);
+    const label = destinationParent ? `under “${destinationParent.text}”` : `to ${destinationCategory?.name ?? "that category"}`;
+    toast.success(`Moved “${task.text}” ${label}.`);
+  }, [categoriesData, reorderTaskMut, tasksData]);
+
+  const handleKeyboardMoveTask = useCallback((id: number, direction: TaskMovementDirection) => {
+    const destination = getKeyboardTaskDestination(tasksData, id, direction);
+    if (!destination) {
+      const boundaryMessage: Record<TaskMovementDirection, string> = {
+        up: "This task is already first at its level.",
+        down: "This task is already last at its level.",
+        indent: "There is no previous task to indent under.",
+        outdent: "This task is already at the top level.",
+      };
+      toast.message(boundaryMessage[direction]);
+      return;
+    }
+    handleMoveTask(id, destination);
+  }, [handleMoveTask, tasksData]);
 
   const handleAddCategory = useCallback(() => {
     const name = newCatName.trim();
@@ -2063,12 +2203,16 @@ export default function Dashboard() {
                     dueRange={dueRange}
                     directReportFilter={directReportFilter}
                     directReports={directReports}
+                    categories={categoriesData}
+                    allTasks={tasksData}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}
                     onDeleteTask={handleDeleteTask}
                     onSwipeDelete={requestSwipeDelete}
                     onAddTask={handleAddTask}
+                    onMoveTask={handleMoveTask}
+                    onKeyboardMove={handleKeyboardMoveTask}
                     onClearCompleted={handleClearCompleted}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={() => setNewTaskId(null)}

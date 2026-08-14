@@ -75,14 +75,18 @@ function renderDashboard(view: string) {
 describe("Dashboard focused priority views", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    const todayAtNoon = new Date();
+    todayAtNoon.setHours(12, 0, 0, 0);
+    const tomorrowAtNoon = new Date(todayAtNoon);
+    tomorrowAtNoon.setDate(tomorrowAtNoon.getDate() + 1);
     fixture.categories = [
       { id: 1, name: "URGENT", kind: "urgent", colorIndex: 0, sortOrder: 0, collapsed: false },
       { id: 2, name: "QDR", kind: "normal", colorIndex: 1, sortOrder: 1, collapsed: false },
     ];
     fixture.tasks = [
-      { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "Important detail", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
-      { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: new Date("2026-08-13T12:00:00").getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
-      { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: new Date("2026-08-14T12:00:00").getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
+      { id: 1, categoryId: 1, parentId: null, text: "Urgent high today", note: "Important detail", dueAt: todayAtNoon.getTime(), priority: "high", recurrence: "none", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 0 },
+      { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: todayAtNoon.getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+      { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: tomorrowAtNoon.getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
     ];
     fixture.updateFilterMutate.mockReset();
     fixture.taskUpdateMutate.mockReset();
@@ -147,6 +151,60 @@ describe("Dashboard focused priority views", () => {
     expect(document.querySelector('[data-task-drop-target="gap-1-root-0"]')).not.toBeNull();
     expect(document.querySelector('[data-task-drop-target="gap-1-1-0"]')).not.toBeNull();
     expect(document.querySelector('[data-task-nest-target="1"]')).not.toBeNull();
+  });
+
+  it("moves a task to another category through the task Move menu", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("button", { name: "Move Urgent high today" }));
+    await user.click(screen.getByRole("menuitem", { name: "Move to QDR" }));
+
+    expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
+      { id: 2, categoryId: 2, parentId: null, sortOrder: 0 },
+      { id: 3, categoryId: 2, parentId: null, sortOrder: 1 },
+      { id: 1, categoryId: 2, parentId: null, sortOrder: 2 },
+    ]);
+  });
+
+  it("makes a task a sub-task through the Move to menu", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("button", { name: "Move Urgent high today" }));
+    const parentSubmenu = screen.getByRole("menuitem", { name: "Make sub-task of…" });
+    parentSubmenu.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(await screen.findByRole("menuitem", { name: "QDR → Medium due today" }));
+
+    expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
+      { id: 1, categoryId: 2, parentId: 2, sortOrder: 0 },
+    ]);
+  });
+
+  it("moves and indents a task from title-field keyboard shortcuts", async () => {
+    fixture.tasks = [
+      ...fixture.tasks,
+      { id: 4, categoryId: 1, parentId: null, text: "Urgent sibling", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+    ];
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    const urgentTitle = screen.getByDisplayValue("Urgent high today");
+    await user.click(urgentTitle);
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    expect(fixture.reorderTaskMutate).toHaveBeenLastCalledWith([
+      { id: 4, categoryId: 1, parentId: null, sortOrder: 0 },
+      { id: 1, categoryId: 1, parentId: null, sortOrder: 1 },
+    ]);
+
+    fixture.reorderTaskMutate.mockReset();
+    const siblingTitle = screen.getByDisplayValue("Urgent sibling");
+    await user.click(siblingTitle);
+    await user.keyboard("{Tab}");
+    expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
+      { id: 4, categoryId: 1, parentId: 1, sortOrder: 0 },
+    ]);
   });
 
   it("applies a saved high-priority due-this-week filter to the main task list", async () => {
