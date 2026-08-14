@@ -174,3 +174,10 @@
 - [x] Add a task-level Move to control for category and parent reassignment
 - [x] Add keyboard shortcuts for moving tasks up, down, nesting, and outdenting
 - [x] Test non-drag and keyboard task movement behavior across hierarchical lists
+
+## Keyboard Navigation & Multi-Select
+- [x] Add a compact keyboard shortcut reference panel in the dashboard header
+- [x] Add task multi-select checkboxes with clear selected-count feedback
+- [x] Add bulk move and indent actions for selected compatible tasks
+- [x] Add keyboard shortcuts to complete, delete, and change task priority
+- [x] Test shortcut discovery, multi-select actions, and expanded keyboard task commands

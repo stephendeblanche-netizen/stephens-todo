@@ -23,7 +23,10 @@ import { filterTasksByDirectReport, matchesDirectReport, type DirectReportFilter
 import { canNestTask } from "@/lib/taskNesting";
 import { buildSensorTaskPlacementUpdates, buildTaskPlacementUpdates, getDragActivator, type TaskDropDestination } from "@/lib/taskDrop";
 import { getKeyboardTaskDestination, type TaskMovementDirection } from "@/lib/taskMovement";
+import { buildBulkCategoryMoveUpdates, buildBulkIndentUpdates } from "@/lib/taskSelection";
 import { useComposition } from "@/hooks/useComposition";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Kbd } from "@/components/ui/kbd";
 import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
 import {
   DropdownMenu,
@@ -267,6 +270,8 @@ interface TaskItemProps {
   onAddChild: (parentId: number, categoryId: number) => void;
   onMoveTask: (id: number, destination: TaskDropDestination) => void;
   onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
+  isSelected: boolean;
+  onToggleSelection: (id: number) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
   isDragOverlay?: boolean;
@@ -275,6 +280,7 @@ interface TaskItemProps {
 function TaskItem({
   node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, allCatTasks,
   allTasks, categories, onUpdate, onDelete, onSwipeDelete, onAddChild, onMoveTask, onKeyboardMove,
+  isSelected, onToggleSelection,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
 }: TaskItemProps) {
@@ -348,6 +354,24 @@ function TaskItem({
     if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       onKeyboardMove(node.id, event.shiftKey ? "outdent" : "indent");
+      return;
+    }
+
+    const commandPressed = (event.ctrlKey || event.metaKey) && !event.altKey;
+    if (commandPressed && event.key === "Enter") {
+      event.preventDefault();
+      onUpdate(node.id, { done: !node.done });
+      return;
+    }
+    if (commandPressed && event.shiftKey && event.key === "Backspace") {
+      event.preventDefault();
+      onDelete(node.id, node.text);
+      return;
+    }
+    if (commandPressed && event.shiftKey && ["1", "2", "3"].includes(event.key)) {
+      event.preventDefault();
+      const priority = event.key === "1" ? "high" : event.key === "2" ? "medium" : "low";
+      onUpdate(node.id, { priority });
       return;
     }
 
@@ -479,7 +503,15 @@ function TaskItem({
             <span className="w-5 flex-shrink-0" />
           )}
 
-          {/* Checkbox */}
+          {/* Selection and completion */}
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelection(node.id)}
+            onClick={(event) => event.stopPropagation()}
+            className="mt-1 shrink-0"
+            style={{ borderColor: isSelected ? "var(--slot-1)" : "var(--border-color)" }}
+            aria-label={`Select ${node.text}`}
+          />
           <input
             type="checkbox"
             checked={node.done}
@@ -487,6 +519,7 @@ function TaskItem({
             className="mt-1 w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
             style={{ accentColor: "var(--status-good)" }}
             onClick={(e) => e.stopPropagation()}
+            aria-label={`Mark ${node.text} complete`}
           />
 
           {/* Text */}
@@ -513,7 +546,7 @@ function TaskItem({
             onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
-            title="Shortcuts: Alt + ↑ / ↓ moves the task; Tab indents; Shift + Tab outdents."
+            title="Shortcuts: Alt + ↑ / ↓ moves; Tab indents; Shift + Tab outdents; Ctrl/Cmd + Enter completes; Ctrl/Cmd + Shift + 1/2/3 sets priority; Ctrl/Cmd + Shift + Backspace deletes."
           />
           <span
             className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]"
@@ -806,6 +839,8 @@ function TaskItem({
                     onAddChild={onAddChild}
                     onMoveTask={onMoveTask}
                     onKeyboardMove={onKeyboardMove}
+                    isSelected={isSelected}
+                    onToggleSelection={onToggleSelection}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={onNewTaskCommitted}
                   />
@@ -1004,6 +1039,8 @@ interface CategoryCardProps {
   onAddTask: (catId: number, parentId?: number) => void;
   onMoveTask: (id: number, destination: TaskDropDestination) => void;
   onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
+  selectedTaskIds: Set<number>;
+  onToggleSelection: (id: number) => void;
   onClearCompleted: (catId: number) => void;
   newTaskId?: number | null;
   onNewTaskCommitted?: () => void;
@@ -1011,7 +1048,7 @@ interface CategoryCardProps {
 
 function CategoryCard({
   cat, tasks, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, categories, allTasks,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onMoveTask, onKeyboardMove, onClearCompleted,
+  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onMoveTask, onKeyboardMove, selectedTaskIds, onToggleSelection, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
   const tree = useMemo(() => buildTree(tasks), [tasks]);
@@ -1165,6 +1202,8 @@ function CategoryCard({
                     onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
                     onMoveTask={onMoveTask}
                     onKeyboardMove={onKeyboardMove}
+                    isSelected={selectedTaskIds.has(node.id)}
+                    onToggleSelection={onToggleSelection}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={onNewTaskCommitted}
                   />
@@ -1238,6 +1277,7 @@ export default function Dashboard() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey(new Date()));
   const [newCatName, setNewCatName] = useState("");
   const [newTaskId, setNewTaskId] = useState<number | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(() => new Set());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
@@ -1337,6 +1377,14 @@ export default function Dashboard() {
   );
   const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
 
+  useEffect(() => {
+    const activeIds = new Set(tasksData.map((task) => task.id));
+    setSelectedTaskIds((current) => {
+      const retained = new Set(Array.from(current).filter((id) => activeIds.has(id)));
+      return retained.size === current.size ? current : retained;
+    });
+  }, [tasksData]);
+
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
     updateCatMut.mutate({ id, ...data });
@@ -1362,6 +1410,17 @@ export default function Dashboard() {
   const handleUpdateTask = useCallback((id: number, data: Partial<Task>) => {
     updateTaskMut.mutate({ id, ...data });
   }, [updateTaskMut]);
+
+  const handleToggleTaskSelection = useCallback((id: number) => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearTaskSelection = useCallback(() => setSelectedTaskIds(new Set()), []);
 
   const handleDeleteTask = useCallback((id: number, text: string) => {
     const task = tasksData.find((t) => t.id === id);
@@ -1449,6 +1508,26 @@ export default function Dashboard() {
     }
     handleMoveTask(id, destination);
   }, [handleMoveTask, tasksData]);
+
+  const handleBulkMoveToCategory = useCallback((categoryId: number) => {
+    const updates = buildBulkCategoryMoveUpdates(tasksData, selectedTaskIds, categoryId);
+    if (updates.length === 0) return;
+    reorderTaskMut.mutate(updates);
+    const destination = categoriesData.find((category) => category.id === categoryId);
+    toast.success(`Moved ${selectedTaskIds.size} selected task${selectedTaskIds.size === 1 ? "" : "s"} to ${destination?.name ?? "that category"}.`);
+    clearTaskSelection();
+  }, [categoriesData, clearTaskSelection, reorderTaskMut, selectedTaskIds, tasksData]);
+
+  const handleBulkIndent = useCallback(() => {
+    const updates = buildBulkIndentUpdates(tasksData, selectedTaskIds);
+    if (!updates) {
+      toast.message("Select one or more consecutive tasks that have a task immediately above them to indent together.");
+      return;
+    }
+    reorderTaskMut.mutate(updates);
+    toast.success(`Indented ${selectedTaskIds.size} selected task${selectedTaskIds.size === 1 ? "" : "s"}.`);
+    clearTaskSelection();
+  }, [clearTaskSelection, reorderTaskMut, selectedTaskIds, tasksData]);
 
   const handleAddCategory = useCallback(() => {
     const name = newCatName.trim();
@@ -1769,6 +1848,15 @@ export default function Dashboard() {
             </div>
           </div>
 
+          <section aria-label="Keyboard shortcuts" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3 py-2" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)", color: "var(--text-secondary)" }}>
+            <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>Keyboard shortcuts</span>
+            <span className="inline-flex items-center gap-1 text-[10.5px]">Move <Kbd>Alt</Kbd><Kbd>↑ / ↓</Kbd></span>
+            <span className="inline-flex items-center gap-1 text-[10.5px]">Nest <Kbd>Tab</Kbd><span>·</span> Outdent <Kbd>Shift + Tab</Kbd></span>
+            <span className="inline-flex items-center gap-1 text-[10.5px]">Complete <Kbd>Ctrl/Cmd + Enter</Kbd></span>
+            <span className="inline-flex items-center gap-1 text-[10.5px]">Priority <Kbd>Ctrl/Cmd + Shift + 1 / 2 / 3</Kbd></span>
+            <span className="inline-flex items-center gap-1 text-[10.5px]">Delete <Kbd>Ctrl/Cmd + Shift + Backspace</Kbd></span>
+          </section>
+
           {/* Stats row */}
           <div className="grid gap-3 mb-5 stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
             {[
@@ -1905,6 +1993,36 @@ export default function Dashboard() {
               />
             </label>
           </div>
+
+          {activeView === "all" && selectedTaskIds.size > 0 && (
+            <section aria-label="Selected task actions" className="mb-3.5 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2" style={{ background: "var(--drop-wash)", borderColor: "var(--slot-1)" }}>
+              <span className="mr-1 text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                {selectedTaskIds.size} selected
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="rounded-lg border px-2.5 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} type="button">
+                    Move to category
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuLabel>Move selected tasks</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {categoriesData.map((category) => (
+                    <DropdownMenuItem key={category.id} onSelect={() => handleBulkMoveToCategory(category.id)}>
+                      {category.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <button className="rounded-lg border px-2.5 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} type="button" onClick={handleBulkIndent}>
+                Indent selected
+              </button>
+              <button className="ml-auto rounded-lg border-none bg-transparent px-2 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-secondary)" }} type="button" onClick={clearTaskSelection}>
+                Clear selection
+              </button>
+            </section>
+          )}
 
           <section className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -2213,6 +2331,8 @@ export default function Dashboard() {
                     onAddTask={handleAddTask}
                     onMoveTask={handleMoveTask}
                     onKeyboardMove={handleKeyboardMoveTask}
+                    selectedTaskIds={selectedTaskIds}
+                    onToggleSelection={handleToggleTaskSelection}
                     onClearCompleted={handleClearCompleted}
                     newTaskId={newTaskId}
                     onNewTaskCommitted={() => setNewTaskId(null)}

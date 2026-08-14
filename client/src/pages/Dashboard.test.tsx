@@ -28,6 +28,7 @@ const fixture = vi.hoisted(() => ({
   ],
   updateFilterMutate: vi.fn(),
   taskUpdateMutate: vi.fn(),
+  taskDeleteMutate: vi.fn(),
   reorderTaskMutate: vi.fn(),
   createDirectReportMutate: vi.fn(),
 }));
@@ -46,7 +47,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
-      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: vi.fn() }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
+      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: fixture.taskDeleteMutate }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
     },
     filters: {
       list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
@@ -90,6 +91,7 @@ describe("Dashboard focused priority views", () => {
     ];
     fixture.updateFilterMutate.mockReset();
     fixture.taskUpdateMutate.mockReset();
+    fixture.taskDeleteMutate.mockReset();
     fixture.reorderTaskMutate.mockReset();
     fixture.createDirectReportMutate.mockReset();
     fixture.filters = [
@@ -151,6 +153,69 @@ describe("Dashboard focused priority views", () => {
     expect(document.querySelector('[data-task-drop-target="gap-1-root-0"]')).not.toBeNull();
     expect(document.querySelector('[data-task-drop-target="gap-1-1-0"]')).not.toBeNull();
     expect(document.querySelector('[data-task-nest-target="1"]')).not.toBeNull();
+  });
+
+  it("renders a compact reference for every task keyboard shortcut", () => {
+    renderDashboard("all");
+    const guide = screen.getByRole("region", { name: "Keyboard shortcuts" });
+    expect(guide.textContent).toContain("Ctrl/Cmd + Enter");
+    expect(guide.textContent).toContain("Ctrl/Cmd + Shift + Backspace");
+  });
+
+  it("selects several tasks and moves them together to a category", async () => {
+    fixture.tasks = [
+      ...fixture.tasks,
+      { id: 4, categoryId: 1, parentId: null, text: "Urgent sibling", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+    ];
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Urgent high today" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Urgent sibling" }));
+    expect(screen.getByText("2 selected")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "Move to category" }));
+    await user.click(screen.getByRole("menuitem", { name: "QDR" }));
+
+    expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
+      { id: 2, categoryId: 2, parentId: null, sortOrder: 0 },
+      { id: 3, categoryId: 2, parentId: null, sortOrder: 1 },
+      { id: 1, categoryId: 2, parentId: null, sortOrder: 2 },
+      { id: 4, categoryId: 2, parentId: null, sortOrder: 3 },
+    ]);
+  });
+
+  it("indents several consecutive selected tasks together", async () => {
+    fixture.tasks = [
+      ...fixture.tasks,
+      { id: 4, categoryId: 1, parentId: null, text: "Urgent sibling", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
+      { id: 5, categoryId: 1, parentId: null, text: "Another urgent sibling", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 2 },
+    ];
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Urgent sibling" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Another urgent sibling" }));
+    await user.click(screen.getByRole("button", { name: "Indent selected" }));
+
+    expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
+      { id: 4, categoryId: 1, parentId: 1, sortOrder: 0 },
+      { id: 5, categoryId: 1, parentId: 1, sortOrder: 1 },
+    ]);
+  });
+
+  it("handles title-field keyboard commands for completion, priority, and deletion", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+    const title = screen.getByDisplayValue("Urgent high today");
+    await user.click(title);
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(fixture.taskUpdateMutate).toHaveBeenLastCalledWith({ id: 1, done: true });
+
+    await user.keyboard("{Control>}{Shift>}1{/Shift}{/Control}");
+    expect(fixture.taskUpdateMutate).toHaveBeenLastCalledWith({ id: 1, priority: "high" });
+
+    await user.keyboard("{Control>}{Shift>}{Backspace}{/Shift}{/Control}");
+    expect(fixture.taskDeleteMutate).toHaveBeenCalledWith({ id: 1 });
   });
 
   it("moves a task to another category through the task Move menu", async () => {
