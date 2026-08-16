@@ -209,3 +209,10 @@
 - [x] Add notes viewing and editing directly inside the priority-flag-expanded detail panel
 - [x] Test priority-flag expansion and inline notes editing at a narrow mobile viewport
 - [x] Reconfirm desktop and mobile visual layout after adding inline detail notes
+
+## iOS Mobile App
+- [x] Select native iOS companion app distribution through TestFlight
+- [x] Confirm Apple Developer account availability for the final TestFlight upload
+- [x] Define a focused shared-data API for tasks, categories, and Direct Reports aligned with the existing dashboard access model
+- [ ] Build the iOS task-management screens and interactions
+- [ ] Test mobile workflows and prepare the app for delivery

@@ -286,6 +286,8 @@ describe("Dashboard focused priority views", () => {
 
   it("applies a saved high-priority due-this-week filter to the main task list", async () => {
     const user = userEvent.setup();
+    // Keep this fixture in the active calendar week even when the suite runs on Sunday.
+    fixture.tasks[2]!.dueAt = fixture.tasks[0]!.dueAt;
     renderDashboard("all");
     await user.click(screen.getByRole("button", { name: "High priority due this week" }));
     expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
