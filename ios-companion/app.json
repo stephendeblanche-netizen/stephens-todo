@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Stephen's To-Do",
+    "slug": "stephens-todo-ios",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "stephenstodo",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stephendeblanche.stephenstodo"
+    }
+  }
+}

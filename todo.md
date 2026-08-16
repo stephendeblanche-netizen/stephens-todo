@@ -211,8 +211,17 @@
 - [x] Reconfirm desktop and mobile visual layout after adding inline detail notes
 
 ## iOS Mobile App
+- [x] Restore the native iOS companion source after workspace cleanup
+- [x] Add interaction coverage that submits a new task and verifies the mocked create payload and refresh
+- [x] Regenerate and inspect a complete iOS companion source handoff archive
+- [x] Add higher-level workflow validation beyond task utility coverage
+- [ ] Authenticate Expo build access and prepare the TestFlight build
+
+## iOS Mobile App
 - [x] Select native iOS companion app distribution through TestFlight
 - [x] Confirm Apple Developer account availability for the final TestFlight upload
 - [x] Define a focused shared-data API for tasks, categories, and Direct Reports aligned with the existing dashboard access model
-- [ ] Build the iOS task-management screens and interactions
-- [ ] Test mobile workflows and prepare the app for delivery
+- [x] Build the iOS task-management screens and interactions
+- [x] Validate the iOS bundle, companion utilities, and shared-data preview
+- [ ] Repair the Expo browser sign-in handoff so TestFlight build access can be authenticated
+- [ ] Prepare the authenticated TestFlight build and submission flow
