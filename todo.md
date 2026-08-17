@@ -232,7 +232,8 @@
 - [x] Register the explicit iOS App ID com.stephendeblanche.stephenstodo
 - [x] Enter the App Store Connect Key ID, Issuer ID, and `.p8` contents through secure settings
 - [x] Request and validate a temporary Expo access token through secure project settings
-- [ ] Revoke the token exposed in chat and obtain a replacement through the secure field
+- [x] Obtain and validate a replacement Expo token through secure project settings
+- [x] Record the owner’s manual confirmation that the chat-exposed token was revoked outside the project
 
 ## iOS Mobile App
 - [x] Select native iOS companion app distribution through TestFlight
