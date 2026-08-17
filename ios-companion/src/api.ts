@@ -50,12 +50,36 @@ export function createTaskRemote(input: TaskCreateInput) {
   return mutate<{ id: number }>("tasks.create", input);
 }
 
-export function createCategoryRemote(input: { name: string; sortOrder: number }) {
-  return mutate<{ id: number }>("categories.create", { ...input, kind: "normal", colorIndex: input.sortOrder % 8 });
+export function createCategoryRemote(input: { name: string; sortOrder: number; colorIndex: number }) {
+  return mutate<{ id: number }>("categories.create", { ...input, kind: "normal" });
 }
 
 export function createDirectReportRemote(input: { name: string; sortOrder: number }) {
   return mutate<{ id: number }>("directReports.create", input);
+}
+
+export function updateCategoryRemote(input: { id: number; name?: string; colorIndex?: number; sortOrder?: number }) {
+  return mutate<{ success: true }>("categories.update", input);
+}
+
+export function deleteCategoryRemote(id: number) {
+  return mutate<{ success: true }>("categories.delete", { id });
+}
+
+export function reorderCategoriesRemote(items: Array<{ id: number; sortOrder: number }>) {
+  return mutate<{ success: true }>("categories.reorder", items);
+}
+
+export function updateDirectReportRemote(input: { id: number; name?: string; sortOrder?: number }) {
+  return mutate<{ success: true }>("directReports.update", input);
+}
+
+export function deleteDirectReportRemote(id: number) {
+  return mutate<{ success: true }>("directReports.delete", { id });
+}
+
+export function reorderTasksRemote(items: Array<{ id: number; sortOrder: number; parentId?: number | null; categoryId?: number }>) {
+  return mutate<{ success: true }>("tasks.reorder", items);
 }
 
 export async function addTask(categoryId: number, text: string) {

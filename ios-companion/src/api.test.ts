@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
-import { addTask, createCategoryRemote, createDirectReportRemote, getDashboard, patchTask } from "./api";
+import { addTask, createCategoryRemote, createDirectReportRemote, deleteCategoryRemote, deleteDirectReportRemote, getDashboard, patchTask, reorderCategoriesRemote, reorderTasksRemote, updateCategoryRemote, updateDirectReportRemote } from "./api";
 
 const response = (json: unknown) => ({ ok: true, json: async () => json }) as Response;
 const envelope = (json: unknown) => ({ result: { data: { json } } });
@@ -55,12 +55,32 @@ describe("iOS companion dashboard workflows", () => {
       .mockResolvedValueOnce(response(envelope({ id: 9 })));
     vi.stubGlobal("fetch", fetchMock);
 
-    await createCategoryRemote({ name: "Planning", sortOrder: 3 });
+    await createCategoryRemote({ name: "Planning", sortOrder: 3, colorIndex: 3 });
     await createDirectReportRemote({ name: "Jordan", sortOrder: 2 });
 
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/trpc/categories.create");
-    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { name: "Planning", sortOrder: 3, kind: "normal", colorIndex: 3 } }) }));
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { name: "Planning", sortOrder: 3, colorIndex: 3, kind: "normal" } }) }));
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/trpc/directReports.create");
     expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { name: "Jordan", sortOrder: 2 } }) }));
+  });
+
+  it("sends editing, deletion, and ordering changes through the shared management contracts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(envelope({ success: true })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateCategoryRemote({ id: 3, name: "Planning", colorIndex: 6 });
+    await deleteCategoryRemote(3);
+    await reorderCategoriesRemote([{ id: 4, sortOrder: 0 }, { id: 3, sortOrder: 1 }]);
+    await updateDirectReportRemote({ id: 7, name: "Jordan" });
+    await deleteDirectReportRemote(7);
+    await reorderTasksRemote([{ id: 10, sortOrder: 0, parentId: 2, categoryId: 1 }]);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/trpc/categories.update");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { id: 3, name: "Planning", colorIndex: 6 } }) }));
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/trpc/categories.delete");
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/trpc/categories.reorder");
+    expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/trpc/directReports.update");
+    expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/trpc/directReports.delete");
+    expect(fetchMock.mock.calls[5]?.[0]).toContain("/api/trpc/tasks.reorder");
   });
 });

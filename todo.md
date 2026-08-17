@@ -284,3 +284,12 @@
 - [x] Add native Direct Report management and task assignment controls
 - [x] Add end-to-end tests for category, sub-category, and Direct Report workflows
 - [x] Build and submit the native management update to TestFlight
+
+## Native iOS Editing, Colours & Reordering
+- [x] Add shared mobile mutations for renaming, deleting, and reordering categories and Direct Reports
+- [x] Add category colour-palette selection and persist the selected colour across devices
+- [x] Add native rename and protected delete controls for categories and Direct Reports
+- [x] Add touch-friendly category reordering with persistent ordering updates
+- [x] Add touch-friendly nested sub-category reordering with persistent sibling ordering updates
+- [x] Add interaction and API regression coverage for editing, deletion, colour choice, and reordering
+- [x] Build and submit the enhanced native management update to TestFlight
