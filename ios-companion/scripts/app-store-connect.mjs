@@ -63,6 +63,8 @@ if (mode === "builds") {
     version: attributes.version,
     uploadedDate: attributes.uploadedDate,
     processingState: attributes.processingState,
+    betaReviewState: attributes.betaReviewState,
+    usesNonExemptEncryption: attributes.usesNonExemptEncryption,
     expired: attributes.expired,
   })), null, 2));
   process.exit(0);

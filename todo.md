@@ -243,3 +243,7 @@
 - [x] Validate the iOS bundle, companion utilities, and shared-data preview
 - [x] Use secure Expo token authentication after the browser sign-in handoff proved unreliable
 - [x] Prepare and submit the authenticated TestFlight build
+
+## TestFlight Installation Guidance
+- [x] Guide the user from the App Store Distribution page to the TestFlight build and internal testing access
+- [x] Resolve the assigned tester’s “No Builds Available” TestFlight status through internal testing access

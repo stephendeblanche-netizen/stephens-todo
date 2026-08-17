@@ -27,3 +27,7 @@ npx eas-cli@22.0.0 submit --platform ios --profile production
 ```
 
 The Apple signing assets and App Store Connect API key must remain in secure settings and never be committed to source control.
+
+## TestFlight tester access
+
+For immediate internal testing, add the user through the **App Store Connect Users** internal group in the TestFlight area. Apple states that all eligible builds are automatically available to users in that group. Build-level individual testers and tester groups are managed separately; external tester availability can wait on Beta App Review. [Apple: Add testers to builds](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-testers-to-builds/)
