@@ -36,6 +36,19 @@ describe("offline dashboard mutations", () => {
     expect(refreshed?.tasks[0].done).toBe(true);
   });
 
+  it("preserves a server-side change to an unpatched field while replaying an offline edit", async () => {
+    api.patchTask.mockResolvedValue({ success: true });
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      syncedAt: 3,
+      tasks: [{ ...dashboard.tasks[0], text: "Renamed on another device", done: true }],
+    });
+    await enqueueMutation({ type: "patch", taskId: 4, patch: { done: true } });
+    const refreshed = await flushQueuedMutations();
+    expect(api.patchTask).toHaveBeenCalledWith(4, { done: true });
+    expect(refreshed?.tasks[0]).toMatchObject({ text: "Renamed on another device", done: true });
+  });
+
   it("remaps edits for an offline-created task to its server ID before replaying them", async () => {
     api.createTaskRemote.mockResolvedValue({ id: 44 });
     api.patchTask.mockResolvedValue({ success: true });

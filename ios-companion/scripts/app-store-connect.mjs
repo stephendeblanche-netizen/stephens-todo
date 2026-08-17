@@ -70,6 +70,44 @@ if (mode === "builds") {
   process.exit(0);
 }
 
+if (mode === "beta-groups") {
+  if (!app) throw new Error(`No App Store Connect app record found for SKU ${sku}.`);
+  const groups = await api(`/v1/apps/${app.id}/betaGroups?limit=50`);
+  console.log(JSON.stringify(groups.data.map(({ id, attributes }) => ({
+    id,
+    name: attributes.name,
+    isInternalGroup: attributes.isInternalGroup,
+    publicLinkEnabled: attributes.publicLinkEnabled,
+  })), null, 2));
+  process.exit(0);
+}
+
+if (mode === "attach-latest-internal-build") {
+  if (!app) throw new Error(`No App Store Connect app record found for SKU ${sku}.`);
+  const builds = await api(`/v1/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=10`);
+  const build = builds.data.find(({ attributes }) => attributes.processingState === "VALID" && !attributes.expired);
+  if (!build) throw new Error("No valid processed iOS build is available for internal TestFlight testing.");
+  const groups = await api(`/v1/apps/${app.id}/betaGroups?limit=50`);
+  const group = groups.data.find(({ attributes }) => attributes.isInternalGroup);
+  if (!group) throw new Error("No internal TestFlight group is available for this app.");
+  const linkedBuilds = await api(`/v1/betaGroups/${group.id}/builds?limit=200`);
+  const alreadyLinked = linkedBuilds.data.some(({ id }) => id === build.id);
+  if (!alreadyLinked) {
+    await api(`/v1/betaGroups/${group.id}/relationships/builds`, {
+      method: "POST",
+      body: JSON.stringify({ data: [{ type: "builds", id: build.id }] }),
+    });
+  }
+  console.log(JSON.stringify({
+    buildId: build.id,
+    buildNumber: build.attributes.version,
+    groupId: group.id,
+    groupName: group.attributes.name,
+    attached: !alreadyLinked,
+  }, null, 2));
+  process.exit(0);
+}
+
 if (!app && mode === "create") {
   const created = await api("/v1/apps", {
     method: "POST",

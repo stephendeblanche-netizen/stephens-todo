@@ -42,9 +42,30 @@ function notificationCopy(kind: ReminderKind, tasks: ReminderTask[]) {
   };
 }
 
+export function buildMobilePushTestMessages(tokens: string[]) {
+  return tokens.map((to) => ({
+    to,
+    sound: "default",
+    title: "Stephen’s To-Do test",
+    body: "Push reminders are connected.",
+    data: { type: "task-reminder-test" },
+  }));
+}
+
+export async function deliverMobilePushTest() {
+  const devices = await getActiveMobilePushDevices();
+  if (devices.length === 0) return { sent: 0, skipped: "no-registered-devices" as const };
+  const response = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(buildMobilePushTestMessages(devices.map((device) => device.expoPushToken))),
+  });
+  if (!response.ok) throw new Error(`Expo push service failed with ${response.status}`);
+  const receipt = await response.json().catch(() => null);
+  return { sent: devices.length, receipt };
+}
+
 export async function deliverMobileReminder(kind: ReminderKind, now = new Date()) {
-  const match = await getMobileReminderScheduleByTaskUid as unknown;
-  void match;
   const [tasks, categories] = await Promise.all([getAllTasks(), getAllCategories()]);
   const reminderTasks = selectReminderTasks(kind, tasks, categories, now);
   const devices = await getActiveMobilePushDevices();

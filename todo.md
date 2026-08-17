@@ -252,5 +252,17 @@
 - [x] Select server-driven push reminders with urgent alerts at 08:00 SAST and due-date alerts at 09:00 SAST
 - [x] Add offline task cache and persisted mutation queue with temporary-ID reconciliation to the iOS companion
 - [x] Sync queued task changes automatically when the app regains connectivity, including offline-created task edits
-- [ ] Add task notification permission and local reminder scheduling controls
-- [ ] Test offline cache, sync conflicts, and notification scheduling before TestFlight delivery
+- [x] Add task notification permission controls, Expo device registration, and live 08:00/09:00 SAST server reminder schedules
+- [x] Test offline cache, sync conflicts, and notification scheduling before TestFlight delivery
+- [x] Enable Push Notifications for the registered App ID and regenerate the App Store provisioning profile
+- [x] Verify the replacement provisioning profile includes the aps-environment entitlement
+- [x] Submit the signed iOS 1.1.0 reminder update to TestFlight processing
+- [x] Verify the newly registered iOS push device and its enabled reminder preferences
+- [x] Send and verify the user-approved one-time iOS push reminder test
+- [x] Create and securely configure an APNs authentication key for the iOS companion push service
+- [x] Enter the APNs Key ID and downloaded `.p8` private key through secure settings
+- [x] Replace the sandbox-only APNs key with a production-capable Apple Push Notifications key for TestFlight delivery
+- [x] Enter and validate the replacement production APNs Key ID and `.p8` file through secure settings
+- [x] Add explicit offline-sync conflict coverage that documents and verifies the intended replay behavior when a server task changes while the device is offline
+- [x] Run and record the final dashboard and iOS companion regression suites after APNs credential registration and push verification
+- [x] Confirm that TestFlight submission must use the API workflow because macOS upload access is unavailable

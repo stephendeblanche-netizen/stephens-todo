@@ -7,6 +7,7 @@ import { registerMobileDevice } from "./api";
 
 const INSTALLATION_ID_KEY = "stephens-todo.installation.v1";
 const REMINDERS_ENABLED_KEY = "stephens-todo.reminders-enabled.v1";
+const PUSH_TOKEN_KEY = "stephens-todo.expo-push-token.v1";
 
 async function installationId() {
   const existing = await AsyncStorage.getItem(INSTALLATION_ID_KEY);
@@ -25,6 +26,12 @@ export async function configurePushReminders(enabled: boolean) {
     await AsyncStorage.setItem(REMINDERS_ENABLED_KEY, String(enabled));
     return { enabled, message: "Push reminders are available in the installed iOS app." };
   }
+  if (!enabled) {
+    const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
+    if (token) await registerMobileDevice({ installationId: await installationId(), expoPushToken: token, enabled: false });
+    await AsyncStorage.setItem(REMINDERS_ENABLED_KEY, "false");
+    return { enabled: false, message: "Task reminders are disabled on this device." };
+  }
   if (!Device.isDevice) return { enabled: false, message: "Push reminders require a physical iPhone or iPad." };
   const current = await Notifications.getPermissionsAsync();
   const currentGranted = current.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED
@@ -37,6 +44,7 @@ export async function configurePushReminders(enabled: boolean) {
   if (!projectId) return { enabled: false, message: "The app notification project is not configured." };
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
   await registerMobileDevice({ installationId: await installationId(), expoPushToken: token, enabled });
+  await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
   await AsyncStorage.setItem(REMINDERS_ENABLED_KEY, String(enabled));
   return { enabled, message: enabled ? "Urgent and due-task reminders are enabled." : "Task reminders are disabled on this device." };
 }

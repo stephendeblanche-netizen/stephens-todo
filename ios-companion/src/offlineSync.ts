@@ -61,10 +61,12 @@ export async function flushQueuedMutations() {
   let remaining = await loadMutationQueue();
   if (remaining.length === 0) return null;
   while (remaining.length > 0) {
-    const mutation = remaining[0];
-    try {
+      const mutation = remaining[0];
+      try {
       if (mutation.type === "patch") {
         if (mutation.taskId < 0) throw new Error("A queued task edit is waiting for its task creation to synchronize.");
+        // Patches are sparse: a queued local value wins only for fields it changes, while
+        // the fresh dashboard fetch below remains authoritative for all other server fields.
         await patchTask(mutation.taskId, mutation.patch);
       } else {
         const created = await createTaskRemote(mutation.input);
