@@ -293,3 +293,10 @@
 - [x] Add touch-friendly nested sub-category reordering with persistent sibling ordering updates
 - [x] Add interaction and API regression coverage for editing, deletion, colour choice, and reordering
 - [x] Build and submit the enhanced native management update to TestFlight
+
+## Native iOS Task Movement
+- [x] Add native task reordering within the current category while preserving sibling hierarchy
+- [x] Add a touch-friendly destination picker for moving a task to another category or beneath a valid parent task
+- [x] Persist category, parent, and sibling-order changes safely through the shared task reorder contract
+- [x] Add interaction and API regression coverage for task reordering and cross-category or nested movement
+- [x] Build and submit the native task movement update to TestFlight

@@ -180,4 +180,29 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { draggableSubcategories.props.onDragEnd({ data: [{ id: 12, sortOrder: 1 }, { id: 11, sortOrder: 0 }] }); await Promise.resolve(); });
     expect(api.reorderTasksRemote).toHaveBeenCalledWith([{ id: 12, sortOrder: 0, parentId: 9, categoryId: 1 }, { id: 11, sortOrder: 1, parentId: 9, categoryId: 1 }]);
   });
+
+  it("drag-reorders top-level tasks and moves a task beneath another valid task", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "First urgent", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Second urgent", sortOrder: 1 },
+      ],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by URGENT")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!);
+    const draggableTasks = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
+    await act(async () => { draggableTasks.props.onDragEnd({ data: [{ id: 10, categoryId: 1 }, { id: 9, categoryId: 1 }] }); await Promise.resolve(); });
+    expect(api.reorderTasksRemote).toHaveBeenCalledWith([{ id: 10, sortOrder: 0, parentId: null, categoryId: 1 }, { id: 9, sortOrder: 1, parentId: null, categoryId: 1 }]);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Close task reordering")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Second urgent")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move task Second urgent")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move Second urgent under First urgent")!);
+    expect(api.reorderTasksRemote).toHaveBeenCalledWith([{ id: 9, categoryId: 1, parentId: null, sortOrder: 0 }, { id: 10, categoryId: 1, parentId: 9, sortOrder: 0 }]);
+  });
 });
