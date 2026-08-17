@@ -205,4 +205,42 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move Second urgent under First urgent")!);
     expect(api.reorderTasksRemote).toHaveBeenCalledWith([{ id: 9, categoryId: 1, parentId: null, sortOrder: 0 }, { id: 10, categoryId: 1, parentId: 9, sortOrder: 0 }]);
   });
+
+  it("selects multiple tasks and moves them together to a category or valid parent", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      categories: [...dashboard.categories, { id: 2, name: "Planning", kind: "normal", colorIndex: 1, sortOrder: 1 }],
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Parent task", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "First selected", sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 11, text: "Second selected", sortOrder: 2 },
+      ],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select multiple tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select First selected")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select Second selected")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move selected tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move selected tasks to Planning")!);
+    expect(api.reorderTasksRemote).toHaveBeenCalledWith([
+      { id: 9, categoryId: 1, parentId: null, sortOrder: 0 },
+      { id: 10, categoryId: 2, parentId: null, sortOrder: 0 },
+      { id: 11, categoryId: 2, parentId: null, sortOrder: 1 },
+    ]);
+
+    api.reorderTasksRemote.mockClear();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select multiple tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select First selected")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select Second selected")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move selected tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move selected tasks under Parent task")!);
+    expect(api.reorderTasksRemote).toHaveBeenCalledWith([
+      { id: 9, categoryId: 1, parentId: null, sortOrder: 0 },
+      { id: 10, categoryId: 1, parentId: 9, sortOrder: 0 },
+      { id: 11, categoryId: 1, parentId: 9, sortOrder: 1 },
+    ]);
+  });
 });

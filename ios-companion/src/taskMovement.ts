@@ -44,3 +44,35 @@ export function buildTaskReorderUpdates(tasks: Task[], categoryId: number): Task
     .sort((left, right) => left.sortOrder - right.sortOrder)
     .map((task, sortOrder) => ({ id: task.id, categoryId, parentId: null, sortOrder }));
 }
+
+const groupKey = (destination: TaskMoveDestination) => `${destination.categoryId}:${destination.parentId ?? "root"}`;
+
+export function buildBulkTaskMoveUpdates(tasks: Task[], selectedIds: number[], destination: TaskMoveDestination): TaskReorderUpdate[] {
+  const selected = new Set(selectedIds);
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const roots = selectedIds
+    .map((id) => taskById.get(id))
+    .filter((task): task is Task => Boolean(task))
+    .filter((task) => {
+      let parentId = task.parentId;
+      while (parentId !== null) {
+        if (selected.has(parentId)) return false;
+        parentId = taskById.get(parentId)?.parentId ?? null;
+      }
+      return true;
+    });
+  if (!roots.length || (destination.parentId !== null && (selected.has(destination.parentId) || roots.some((task) => !isValidMoveParent(tasks, task.id, destination.parentId))))) return [];
+
+  const destinationKey = groupKey(destination);
+  const sourceGroups = new Map<string, TaskMoveDestination>();
+  roots.forEach((task) => {
+    const origin = { categoryId: task.categoryId, parentId: task.parentId ?? null };
+    if (groupKey(origin) !== destinationKey) sourceGroups.set(groupKey(origin), origin);
+  });
+  const sourceUpdates = [...sourceGroups.values()].flatMap((origin) =>
+    siblingsFor(tasks, origin).filter((task) => !selected.has(task.id)).map((task, sortOrder) => ({ id: task.id, categoryId: origin.categoryId, parentId: origin.parentId, sortOrder })),
+  );
+  const target = [...siblingsFor(tasks, destination).filter((task) => !selected.has(task.id)), ...roots];
+  const targetUpdates = target.map((task, sortOrder) => ({ id: task.id, categoryId: destination.categoryId, parentId: destination.parentId, sortOrder }));
+  return [...sourceUpdates, ...targetUpdates];
+}

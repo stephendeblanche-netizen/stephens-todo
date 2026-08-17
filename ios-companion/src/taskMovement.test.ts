@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTaskMoveUpdates, buildTaskReorderUpdates, getDescendantTaskIds, isValidMoveParent } from "./taskMovement";
+import { buildBulkTaskMoveUpdates, buildTaskMoveUpdates, buildTaskReorderUpdates, getDescendantTaskIds, isValidMoveParent } from "./taskMovement";
 import type { Task } from "./types";
 
 const task = (id: number, categoryId: number, parentId: number | null, sortOrder: number): Task => ({ id, categoryId, parentId, sortOrder, text: `Task ${id}`, note: "", done: false, dueAt: null, priority: "medium", recurrence: "none", accountableDirectReportId: null });
@@ -31,5 +31,14 @@ describe("native task movement", () => {
       { id: 1, categoryId: 10, parentId: null, sortOrder: 0 },
       { id: 2, categoryId: 10, parentId: null, sortOrder: 1 },
     ]);
+  });
+
+  it("moves selected root tasks together while preserving their chosen order and rejecting invalid parents", () => {
+    expect(buildBulkTaskMoveUpdates(tasks, [2, 1], { categoryId: 20, parentId: null })).toEqual([
+      { id: 4, categoryId: 20, parentId: null, sortOrder: 0 },
+      { id: 2, categoryId: 20, parentId: null, sortOrder: 1 },
+      { id: 1, categoryId: 20, parentId: null, sortOrder: 2 },
+    ]);
+    expect(buildBulkTaskMoveUpdates(tasks, [1, 2], { categoryId: 10, parentId: 3 })).toEqual([]);
   });
 });

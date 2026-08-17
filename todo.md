@@ -300,3 +300,10 @@
 - [x] Persist category, parent, and sibling-order changes safely through the shared task reorder contract
 - [x] Add interaction and API regression coverage for task reordering and cross-category or nested movement
 - [x] Build and submit the native task movement update to TestFlight
+
+## Native iOS Multi-Select & Bulk Movement
+- [x] Add safe bulk task-movement calculations that preserve selected ordering and block invalid parent destinations
+- [x] Add native task selection controls and a compact selected-item action bar
+- [x] Add a bulk destination picker for moving selected tasks to another category or beneath a valid parent task
+- [x] Add regression coverage for multi-select, bulk category moves, and bulk nested moves
+- [x] Build and submit the native bulk movement update to TestFlight
