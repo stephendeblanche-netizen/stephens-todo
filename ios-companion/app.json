@@ -8,7 +8,15 @@
     "scheme": "stephenstodo",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stephendeblanche.stephenstodo"
+      "bundleIdentifier": "com.stephendeblanche.stephenstodo",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d24a5c3f-a713-4f4d-9902-8c85325d8413"
+      }
     }
   }
 }

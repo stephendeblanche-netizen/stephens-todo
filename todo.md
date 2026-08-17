@@ -215,7 +215,24 @@
 - [x] Add interaction coverage that submits a new task and verifies the mocked create payload and refresh
 - [x] Regenerate and inspect a complete iOS companion source handoff archive
 - [x] Add higher-level workflow validation beyond task utility coverage
-- [ ] Authenticate Expo build access and prepare the TestFlight build
+- [x] Authenticate Expo build access and prepare the TestFlight build
+- [x] Add and validate the iOS encryption declaration required for TestFlight configuration
+- [x] Authorize Apple build credentials through securely supplied manual signing assets
+- [x] Validate the supplied Apple ID and app-specific password route before using the safer manual signing route
+- [x] Enter the prepared Apple app-specific password through the secure credential field
+- [x] Replace the rejected app-specific password route with validated API-key and manual-signing configuration
+- [x] Create and securely configure an App Store Connect API key for iOS signing and submission
+- [x] Create the Apple App ID, distribution certificate, and App Store provisioning profile manually
+- [x] Replace the rejected elliptic-curve CSR with an Apple-compatible RSA 2048 CSR
+- [x] Verify the supplied Apple Distribution certificate matches the generated RSA private key
+- [x] Package the matching distribution certificate and private key for secure build signing
+- [x] Verify the supplied App Store provisioning profile matches the App ID and distribution certificate
+- [x] Submit the completed iOS build to App Store Connect for TestFlight processing
+- [x] Create the Stephen’s To-Do Dashboard App Store Connect record with the registered bundle ID
+- [x] Register the explicit iOS App ID com.stephendeblanche.stephenstodo
+- [x] Enter the App Store Connect Key ID, Issuer ID, and `.p8` contents through secure settings
+- [x] Request and validate a temporary Expo access token through secure project settings
+- [ ] Revoke the token exposed in chat and obtain a replacement through the secure field
 
 ## iOS Mobile App
 - [x] Select native iOS companion app distribution through TestFlight
@@ -223,5 +240,5 @@
 - [x] Define a focused shared-data API for tasks, categories, and Direct Reports aligned with the existing dashboard access model
 - [x] Build the iOS task-management screens and interactions
 - [x] Validate the iOS bundle, companion utilities, and shared-data preview
-- [ ] Repair the Expo browser sign-in handoff so TestFlight build access can be authenticated
-- [ ] Prepare the authenticated TestFlight build and submission flow
+- [x] Use secure Expo token authentication after the browser sign-in handoff proved unreliable
+- [x] Prepare and submit the authenticated TestFlight build

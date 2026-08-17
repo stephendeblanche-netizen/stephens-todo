@@ -1,8 +1,25 @@
 {
-  "cli": { "version": ">= 16.0.0" },
-  "build": {
-    "preview": { "distribution": "internal", "ios": { "simulator": false } },
-    "production": { "autoIncrement": true }
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
-  "submit": { "production": {} }
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "stephen.deblanche@gmail.com",
+        "ascAppId": "6802222202"
+      }
+    }
+  }
 }
