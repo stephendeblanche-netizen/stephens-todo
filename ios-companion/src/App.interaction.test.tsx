@@ -2,7 +2,7 @@ import React from "react";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), addTask: vi.fn() }));
+const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn() }));
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
@@ -31,7 +31,7 @@ describe("restored iOS companion interactions", () => {
   beforeEach(() => {
     api.getDashboard.mockReset().mockResolvedValue(dashboard);
     api.patchTask.mockReset().mockResolvedValue({ success: true });
-    api.addTask.mockReset().mockResolvedValue({ id: 10 });
+    api.createTaskRemote.mockReset().mockResolvedValue({ id: 10 });
   });
 
   it("loads tasks, opens details, updates priority and notes, and opens the add-task sheet", async () => {
@@ -58,7 +58,7 @@ describe("restored iOS companion interactions", () => {
     const newTaskInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.placeholder === "What needs doing?")[0]!;
     await act(async () => { newTaskInput.props.onChangeText("Create from iPhone"); });
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
-    expect(api.addTask).toHaveBeenCalledWith(1, "Create from iPhone");
+    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, text: "Create from iPhone", priority: "medium" }));
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
   });
 });

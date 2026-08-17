@@ -26,6 +26,10 @@ import {
   replaceAllData,
   getDashboardEmailSchedule,
   updateDashboardEmailSchedule,
+  getMobileReminderSchedule,
+  registerMobilePushDevice,
+  updateMobileReminderSchedule,
+  getTaskByMobileClientMutationId,
 } from "./db";
 import { cascadeCategoryId, getDescendantIds } from "./db";
 import { eq, and, isNull } from "drizzle-orm";
@@ -76,6 +80,27 @@ export const appRouter = router({
         }, sessionToken);
         await updateDashboardEmailSchedule(schedule.id, input);
         return { success: true, cron, nextExecutionAt: updateResult.nextExecutionAt ?? null };
+      }),
+  }),
+
+  mobileReminders: router({
+    settings: publicProcedure.query(async () => getMobileReminderSchedule()),
+    registerDevice: publicProcedure
+      .input(z.object({
+        installationId: z.string().trim().min(8).max(120),
+        expoPushToken: z.string().trim().regex(/^ExponentPushToken\[.+\]$|^ExpoPushToken\[.+\]$/, "Enter a valid Expo push token."),
+        enabled: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        await registerMobilePushDevice({ ...input, platform: "ios" });
+        return { success: true };
+      }),
+    setEnabled: publicProcedure
+      .input(z.object({ enabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const schedule = await getMobileReminderSchedule();
+        await updateMobileReminderSchedule(schedule.id, { enabled: input.enabled });
+        return { success: true };
       }),
   }),
 
@@ -202,8 +227,13 @@ export const appRouter = router({
         priority: z.enum(["high", "medium", "low"]).optional(),
         recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
         accountableDirectReportId: z.number().int().nullable().optional(),
+        mobileClientMutationId: z.string().trim().min(8).max(120).optional(),
       }))
       .mutation(async ({ input }) => {
+        if (input.mobileClientMutationId) {
+          const existing = await getTaskByMobileClientMutationId(input.mobileClientMutationId);
+          if (existing) return { id: existing.id };
+        }
         const id = await createTask(input);
         return { id };
       }),

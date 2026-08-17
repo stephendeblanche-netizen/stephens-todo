@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { registerDailyDashboardEmailRoute } from "../dailyDashboardEmail";
 import { registerMobileApi } from "../mobileApi";
+import { registerMobileReminderRoute } from "../mobileReminders";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -39,6 +40,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerDailyDashboardEmailRoute(app);
+  registerMobileReminderRoute(app);
   registerMobileApi(app);
   // tRPC API
   app.use(

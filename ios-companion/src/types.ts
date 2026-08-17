@@ -9,3 +9,7 @@ export type Task = {
 };
 export type DashboardPayload = { categories: Category[]; tasks: Task[]; directReports: DirectReport[]; syncedAt: number };
 export type TaskPatch = Partial<Pick<Task, "done" | "note" | "priority">>;
+export type TaskCreateInput = { categoryId: number; text: string; sortOrder: number; priority: Priority; mobileClientMutationId?: string };
+export type QueuedTaskMutation =
+  | { id: string; type: "patch"; taskId: number; patch: TaskPatch; createdAt: number }
+  | { id: string; type: "create"; temporaryTaskId: number; input: TaskCreateInput; createdAt: number };

@@ -1,4 +1,4 @@
-import { bigint, boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 // Core user table backing auth flow
 export const users = mysqlTable("users", {
@@ -76,6 +76,42 @@ export const dashboardEmailSchedules = mysqlTable("dashboard_email_schedules", {
 
 export type DashboardEmailSchedule = typeof dashboardEmailSchedules.$inferSelect;
 
+// Registered iOS companion installations that have opted in to remote task reminders.
+export const mobilePushDevices = mysqlTable("mobile_push_devices", {
+  id: int("id").autoincrement().primaryKey(),
+  installationId: varchar("installation_id", { length: 120 }).notNull(),
+  expoPushToken: varchar("expo_push_token", { length: 255 }).notNull(),
+  platform: varchar("platform", { length: 20 }).default("ios").notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("mobile_push_devices_installation_uidx").on(table.installationId),
+  uniqueIndex("mobile_push_devices_token_uidx").on(table.expoPushToken),
+]);
+
+export type MobilePushDevice = typeof mobilePushDevices.$inferSelect;
+
+// One shared reminder configuration for Stephen's dashboard. Times are expressed in SAST.
+export const mobileReminderSchedules = mysqlTable("mobile_reminder_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  enabled: boolean("enabled").default(true).notNull(),
+  urgentTimeSast: varchar("urgent_time_sast", { length: 5 }).default("08:00").notNull(),
+  dueTimeSast: varchar("due_time_sast", { length: 5 }).default("09:00").notNull(),
+  urgentScheduleCronTaskUid: varchar("urgent_schedule_cron_task_uid", { length: 65 }),
+  dueScheduleCronTaskUid: varchar("due_schedule_cron_task_uid", { length: 65 }),
+  lastUrgentDeliveryDate: varchar("last_urgent_delivery_date", { length: 10 }),
+  lastDueDeliveryDate: varchar("last_due_delivery_date", { length: 10 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("mobile_reminder_urgent_task_uid_idx").on(table.urgentScheduleCronTaskUid),
+  index("mobile_reminder_due_task_uid_idx").on(table.dueScheduleCronTaskUid),
+]);
+
+export type MobileReminderSchedule = typeof mobileReminderSchedules.$inferSelect;
+
 // Tasks table — supports unlimited nesting via parentId self-reference
 export const tasks = mysqlTable("tasks", {
   id: int("id").autoincrement().primaryKey(),
@@ -91,6 +127,8 @@ export const tasks = mysqlTable("tasks", {
   accountableDirectReportId: int("accountableDirectReportId"),
   /** When completed, recurring tasks are advanced to their next due date instead of archived. */
   recurrence: mysqlEnum("recurrence", ["none", "daily", "weekly", "monthly"]).default("none").notNull(),
+  /** Client-generated key used to make queued offline task creation safe to retry. */
+  mobileClientMutationId: varchar("mobile_client_mutation_id", { length: 120 }),
   done: boolean("done").default(false).notNull(),
   collapsed: boolean("collapsed").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),

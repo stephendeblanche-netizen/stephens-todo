@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import type { DashboardPayload, Task, TaskPatch } from "./types";
+import type { DashboardPayload, Task, TaskCreateInput, TaskPatch } from "./types";
 
 const API = "https://stephtodo-hbslvcim.manus.space";
 const PREVIEW_API = "https://3000-iv6cbe04u4bd6491hsmh0-b71c759d.us2.manus.computer";
@@ -38,8 +38,20 @@ export function patchTask(id: number, patch: TaskPatch) {
   return mutate<{ success: true }>("tasks.update", { id, ...patch });
 }
 
+export function registerMobileDevice(input: { installationId: string; expoPushToken: string; enabled: boolean }) {
+  return mutate<{ success: true }>("mobileReminders.registerDevice", input);
+}
+
+export function getReminderSettings() {
+  return read<{ enabled: boolean; urgentTimeSast: string; dueTimeSast: string }>("mobileReminders.settings");
+}
+
+export function createTaskRemote(input: TaskCreateInput) {
+  return mutate<{ id: number }>("tasks.create", input);
+}
+
 export async function addTask(categoryId: number, text: string) {
   const tasks = await read<Task[]>("tasks.listAll");
   const sortOrder = tasks.filter((task) => task.categoryId === categoryId && task.parentId === null).length;
-  return mutate<{ id: number }>("tasks.create", { categoryId, text, sortOrder, priority: "medium" });
+  return createTaskRemote({ categoryId, text, sortOrder, priority: "medium" });
 }

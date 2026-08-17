@@ -10,8 +10,13 @@
     "bundle:ios": "expo export --platform ios"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/netinfo": "^11.4.1",
     "expo": "~54.0.36",
+    "expo-constants": "^18.0.13",
+    "expo-device": "^8.0.10",
     "expo-haptics": "~15.0.8",
+    "expo-notifications": "^0.32.17",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",

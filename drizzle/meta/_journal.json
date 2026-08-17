@@ -57,6 +57,20 @@
       "when": 1786693979291,
       "tag": "0007_neat_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1786955671489,
+      "tag": "0008_vengeful_moon_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1786956082479,
+      "tag": "0009_gorgeous_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

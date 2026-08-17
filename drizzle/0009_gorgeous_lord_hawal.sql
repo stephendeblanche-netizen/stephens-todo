@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `mobile_client_mutation_id` varchar(120);

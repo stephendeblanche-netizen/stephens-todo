@@ -247,3 +247,10 @@
 ## TestFlight Installation Guidance
 - [x] Guide the user from the App Store Distribution page to the TestFlight build and internal testing access
 - [x] Resolve the assigned tester’s “No Builds Available” TestFlight status through internal testing access
+
+## iOS Reminders & Offline Sync
+- [x] Select server-driven push reminders with urgent alerts at 08:00 SAST and due-date alerts at 09:00 SAST
+- [x] Add offline task cache and persisted mutation queue with temporary-ID reconciliation to the iOS companion
+- [x] Sync queued task changes automatically when the app regains connectivity, including offline-created task edits
+- [ ] Add task notification permission and local reminder scheduling controls
+- [ ] Test offline cache, sync conflicts, and notification scheduling before TestFlight delivery

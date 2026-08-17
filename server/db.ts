@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { DashboardEmailSchedule, InsertUser, categories, dashboardEmailSchedules, directReports, savedFilters, tasks, users } from "../drizzle/schema";
+import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, mobilePushDevices, mobileReminderSchedules, savedFilters, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -183,6 +183,50 @@ export async function markDashboardEmailScheduleSent(id: number) {
   await db.update(dashboardEmailSchedules).set({ lastSentAt: new Date() }).where(eq(dashboardEmailSchedules.id, id));
 }
 
+// ---- Mobile push reminders ----
+
+export async function registerMobilePushDevice(data: { installationId: string; expoPushToken: string; platform: "ios"; enabled: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(mobilePushDevices).values({ ...data, lastSeenAt: new Date() }).onDuplicateKeyUpdate({
+    set: { expoPushToken: data.expoPushToken, platform: data.platform, enabled: data.enabled, lastSeenAt: new Date() },
+  });
+}
+
+export async function getActiveMobilePushDevices() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(mobilePushDevices).where(eq(mobilePushDevices.enabled, true));
+}
+
+export async function getMobileReminderSchedule(): Promise<MobileReminderSchedule> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const existing = await db.select().from(mobileReminderSchedules).orderBy(asc(mobileReminderSchedules.id)).limit(1);
+  if (existing[0]) return existing[0];
+  const [result] = await db.insert(mobileReminderSchedules).values({ enabled: true, urgentTimeSast: "08:00", dueTimeSast: "09:00" });
+  const id = (result as unknown as { insertId: number }).insertId;
+  const created = await db.select().from(mobileReminderSchedules).where(eq(mobileReminderSchedules.id, id)).limit(1);
+  if (!created[0]) throw new Error("Could not create mobile reminder schedule");
+  return created[0];
+}
+
+export async function getMobileReminderScheduleByTaskUid(taskUid: string): Promise<{ schedule: MobileReminderSchedule; kind: "urgent" | "due" } | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const urgentRows = await db.select().from(mobileReminderSchedules).where(eq(mobileReminderSchedules.urgentScheduleCronTaskUid, taskUid)).limit(1);
+  if (urgentRows[0]) return { schedule: urgentRows[0], kind: "urgent" };
+  const dueRows = await db.select().from(mobileReminderSchedules).where(eq(mobileReminderSchedules.dueScheduleCronTaskUid, taskUid)).limit(1);
+  if (dueRows[0]) return { schedule: dueRows[0], kind: "due" };
+  return undefined;
+}
+
+export async function updateMobileReminderSchedule(id: number, data: Partial<{ enabled: boolean; urgentScheduleCronTaskUid: string | null; dueScheduleCronTaskUid: string | null; lastUrgentDeliveryDate: string; lastDueDeliveryDate: string }>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(mobileReminderSchedules).set(data).where(eq(mobileReminderSchedules.id, id));
+}
+
 // ---- Tasks ----
 
 export async function getTasksByCategory(categoryId: number) {
@@ -197,7 +241,7 @@ export async function getAllTasks() {
   return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; mobileClientMutationId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
@@ -209,11 +253,19 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
     priority: data.priority ?? "medium",
     accountableDirectReportId: data.accountableDirectReportId ?? null,
     recurrence: data.recurrence ?? "none",
+    mobileClientMutationId: data.mobileClientMutationId ?? null,
     done: false,
     collapsed: false,
     sortOrder: data.sortOrder,
   });
   return (result as unknown as { insertId: number }).insertId;
+}
+
+export async function getTaskByMobileClientMutationId(mobileClientMutationId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(tasks).where(eq(tasks.mobileClientMutationId, mobileClientMutationId)).limit(1);
+  return rows[0];
 }
 
 export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportId: number | null; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
