@@ -61,4 +61,26 @@ describe("restored iOS companion interactions", () => {
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, text: "Create from iPhone", priority: "medium" }));
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
   });
+
+  it("renders compact single-line category chips and reserves space for priority controls on iPhone", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      categories: [
+        ...dashboard.categories,
+        { id: 2, name: "Operational Reporting", kind: "normal", colorIndex: 1, sortOrder: 1 },
+      ],
+      tasks: [{ ...dashboard.tasks[0], text: "A long task title that should remain readable beside its priority" }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    const categoryControl = pressables(root).find((node) => node.props.accessibilityLabel === "Filter by Operational Reporting")!;
+    expect(categoryControl.props.style).toContainEqual(expect.objectContaining({ height: 40, maxWidth: 176 }));
+    const categoryLabel = root.findAll((node) => String(node.type) === "Text" && node.children.includes("Operational Reporting"))[0]!;
+    expect(categoryLabel.props.numberOfLines).toBe(1);
+
+    const priorityControl = pressables(root).find((node) => node.props.accessibilityLabel?.startsWith("Change priority for A long task"))!;
+    expect(priorityControl.props.style).toContainEqual(expect.objectContaining({ minWidth: 78 }));
+  });
 });

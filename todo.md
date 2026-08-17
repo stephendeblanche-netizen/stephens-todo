@@ -266,3 +266,10 @@
 - [x] Add explicit offline-sync conflict coverage that documents and verifies the intended replay behavior when a server task changes while the device is offline
 - [x] Run and record the final dashboard and iOS companion regression suites after APNs credential registration and push verification
 - [x] Confirm that TestFlight submission must use the API workflow because macOS upload access is unavailable
+
+## iOS Visual Layout Corrections
+- [x] Replace the oversized horizontal category selector cards with compact, horizontally scrollable filter chips on iPhone
+- [x] Prevent category labels and controls from clipping, wrapping into tall blocks, or pushing the task list below the fold
+- [x] Refine task-row text and priority-control sizing so titles, metadata, and flags remain legible on narrow screens
+- [x] Add iPhone-size layout regression coverage and verify the revised screen composition
+- [x] Build and submit the corrected iOS companion version to TestFlight
