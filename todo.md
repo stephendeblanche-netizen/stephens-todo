@@ -307,3 +307,8 @@
 - [x] Add a bulk destination picker for moving selected tasks to another category or beneath a valid parent task
 - [x] Add regression coverage for multi-select, bulk category moves, and bulk nested moves
 - [x] Build and submit the native bulk movement update to TestFlight
+
+## Native iOS Reordering Exit Fix
+- [x] Add a prominent completion action that exits task reordering and returns to the main task list
+- [x] Add regression coverage for exiting the task reordering view
+- [x] Build and submit the corrective native update to TestFlight

@@ -206,6 +206,23 @@ describe("restored iOS companion interactions", () => {
     expect(api.reorderTasksRemote).toHaveBeenCalledWith([{ id: 9, categoryId: 1, parentId: null, sortOrder: 0 }, { id: 10, categoryId: 1, parentId: 9, sortOrder: 0 }]);
   });
 
+  it("returns to the main task list from the prominent task-reordering completion action", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [...dashboard.tasks, { ...dashboard.tasks[0], id: 10, text: "Second urgent", sortOrder: 1 }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by URGENT")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!);
+    expect(root.findAll((node) => String(node.type) === "Modal")).toHaveLength(1);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Finish reordering and return to task list")!);
+    expect(root.findAll((node) => String(node.type) === "Modal")).toHaveLength(0);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")).toBeTruthy();
+  });
+
   it("selects multiple tasks and moves them together to a category or valid parent", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
