@@ -312,3 +312,9 @@
 - [x] Add a prominent completion action that exits task reordering and returns to the main task list
 - [x] Add regression coverage for exiting the task reordering view
 - [x] Build and submit the corrective native update to TestFlight
+
+## Native iOS Hierarchy Presentation
+- [x] Render category tasks in deterministic parent-and-child hierarchy order
+- [x] Make nested sub-categories visually subordinate through indentation, connector treatment, and hierarchy labels
+- [x] Add regression coverage for ordered nested task rendering
+- [x] Build and submit the hierarchy presentation update to TestFlight

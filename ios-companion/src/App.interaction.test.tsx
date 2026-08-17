@@ -223,6 +223,28 @@ describe("restored iOS companion interactions", () => {
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")).toBeTruthy();
   });
 
+  it("renders child tasks directly after their parent with an explicit nested sub-category treatment", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Parent task", sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 10, parentId: 9, text: "Nested child", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 8, text: "First root", sortOrder: 0 },
+      ],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+    const textNodes = root.findAll((node) => String(node.type) === "Text");
+    const renderedText = textNodes.map((node) => node.children.join(""));
+
+    expect(renderedText.indexOf("Parent task")).toBeLessThan(renderedText.indexOf("↳ Sub-category of Parent task"));
+    expect(renderedText).toContain("Nested child");
+    const nestedCard = root.findAll((node) => String(node.type) === "View" && Array.isArray(node.props.style) && node.props.style.some((entry: any) => entry?.borderLeftWidth === 4));
+    expect(nestedCard).toHaveLength(1);
+    expect(nestedCard[0]?.props.style).toContainEqual(expect.objectContaining({ marginLeft: 16 }));
+  });
+
   it("selects multiple tasks and moves them together to a category or valid parent", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
