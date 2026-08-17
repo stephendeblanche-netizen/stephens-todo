@@ -273,3 +273,6 @@
 - [x] Refine task-row text and priority-control sizing so titles, metadata, and flags remain legible on narrow screens
 - [x] Add iPhone-size layout regression coverage and verify the revised screen composition
 - [x] Build and submit the corrected iOS companion version to TestFlight
+- [x] Remove the category-filter container’s residual vertical space when a category is selected
+- [x] Keep category chips and priority/completion filters in a compact continuous control area above the task list
+- [x] Add regression coverage for the no-gap selected-category layout and publish the corrected TestFlight build

@@ -75,6 +75,8 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
 
+    const categoryScroller = root.findAll((node) => String(node.type) === "FlatList" && node.props.horizontal)[0]!;
+    expect(categoryScroller.props.style).toMatchObject({ height: 48, flexGrow: 0, flexShrink: 0 });
     const categoryControl = pressables(root).find((node) => node.props.accessibilityLabel === "Filter by Operational Reporting")!;
     expect(categoryControl.props.style).toContainEqual(expect.objectContaining({ height: 40, maxWidth: 176 }));
     const categoryLabel = root.findAll((node) => String(node.type) === "Text" && node.children.includes("Operational Reporting"))[0]!;
