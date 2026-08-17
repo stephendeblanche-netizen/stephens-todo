@@ -50,6 +50,14 @@ export function createTaskRemote(input: TaskCreateInput) {
   return mutate<{ id: number }>("tasks.create", input);
 }
 
+export function createCategoryRemote(input: { name: string; sortOrder: number }) {
+  return mutate<{ id: number }>("categories.create", { ...input, kind: "normal", colorIndex: input.sortOrder % 8 });
+}
+
+export function createDirectReportRemote(input: { name: string; sortOrder: number }) {
+  return mutate<{ id: number }>("directReports.create", input);
+}
+
 export async function addTask(categoryId: number, text: string) {
   const tasks = await read<Task[]>("tasks.listAll");
   const sortOrder = tasks.filter((task) => task.categoryId === categoryId && task.parentId === null).length;

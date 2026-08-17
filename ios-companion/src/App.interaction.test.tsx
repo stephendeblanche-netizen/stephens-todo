@@ -2,7 +2,7 @@ import React from "react";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn() }));
+const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn(), createCategoryRemote: vi.fn(), createDirectReportRemote: vi.fn() }));
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
@@ -21,7 +21,7 @@ import App from "../App";
 const dashboard = {
   categories: [{ id: 1, name: "URGENT", kind: "urgent" as const, colorIndex: 0, sortOrder: 0 }],
   tasks: [{ id: 9, categoryId: 1, parentId: null, text: "Prepare brief", note: "Existing note", done: false, sortOrder: 0, dueAt: null, priority: "medium" as const, recurrence: "none" as const, accountableDirectReportId: null }],
-  directReports: [], syncedAt: 1,
+  directReports: [{ id: 4, name: "Ava", sortOrder: 0 }], syncedAt: 1,
 };
 
 const pressables = (root: ReactTestInstance) => root.findAll((node) => String(node.type) === "Pressable");
@@ -32,6 +32,8 @@ describe("restored iOS companion interactions", () => {
     api.getDashboard.mockReset().mockResolvedValue(dashboard);
     api.patchTask.mockReset().mockResolvedValue({ success: true });
     api.createTaskRemote.mockReset().mockResolvedValue({ id: 10 });
+    api.createCategoryRemote.mockReset().mockResolvedValue({ id: 2 });
+    api.createDirectReportRemote.mockReset().mockResolvedValue({ id: 5 });
   });
 
   it("loads tasks, opens details, updates priority and notes, and opens the add-task sheet", async () => {
@@ -52,6 +54,7 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { noteInput.props.onBlur(); await Promise.resolve(); });
     expect(api.patchTask).toHaveBeenCalledWith(9, { note: "Mobile note" });
 
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
     expect(root.findAll((node) => String(node.type) === "Modal")).toHaveLength(1);
 
@@ -60,6 +63,37 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, text: "Create from iPhone", priority: "medium" }));
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("creates categories and Direct Reports, assigns a Direct Report, and nests a sub-category", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add category")!);
+    const categoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add category")[0]!;
+    await act(async () => { categoryInput.props.onChangeText("Planning"); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add category")!);
+    expect(api.createCategoryRemote).toHaveBeenCalledWith({ name: "Planning", sortOrder: 1 });
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add Direct Report")!);
+    const reportInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add Direct Report")[0]!;
+    await act(async () => { reportInput.props.onChangeText("Jordan"); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add direct report")!);
+    expect(api.createDirectReportRemote).toHaveBeenCalledWith({ name: "Jordan", sortOrder: 1 });
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by All tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Prepare brief")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Ava to Prepare brief")!);
+    expect(api.patchTask).toHaveBeenCalledWith(9, { accountableDirectReportId: 4 });
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add sub-category under Prepare brief")!);
+    const subCategoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add sub-category")[0]!;
+    await act(async () => { subCategoryInput.props.onChangeText("Prepare proposal"); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add sub-category")!);
+    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, parentId: 9, text: "Prepare proposal" }));
   });
 
   it("renders compact single-line category chips and reserves space for priority controls on iPhone", async () => {

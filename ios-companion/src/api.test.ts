@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
-import { addTask, getDashboard, patchTask } from "./api";
+import { addTask, createCategoryRemote, createDirectReportRemote, getDashboard, patchTask } from "./api";
 
 const response = (json: unknown) => ({ ok: true, json: async () => json }) as Response;
 const envelope = (json: unknown) => ({ result: { data: { json } } });
@@ -47,5 +47,20 @@ describe("iOS companion dashboard workflows", () => {
       method: "POST",
       body: JSON.stringify({ json: { categoryId: 2, text: "Prepare report", sortOrder: 2, priority: "medium" } }),
     }));
+  });
+
+  it("creates categories and Direct Reports through the shared dashboard mutation contracts", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(envelope({ id: 8 })))
+      .mockResolvedValueOnce(response(envelope({ id: 9 })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createCategoryRemote({ name: "Planning", sortOrder: 3 });
+    await createDirectReportRemote({ name: "Jordan", sortOrder: 2 });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/trpc/categories.create");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { name: "Planning", sortOrder: 3, kind: "normal", colorIndex: 3 } }) }));
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/trpc/directReports.create");
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { name: "Jordan", sortOrder: 2 } }) }));
   });
 });

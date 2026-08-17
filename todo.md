@@ -276,3 +276,11 @@
 - [x] Remove the category-filter container’s residual vertical space when a category is selected
 - [x] Keep category chips and priority/completion filters in a compact continuous control area above the task list
 - [x] Add regression coverage for the no-gap selected-category layout and publish the corrected TestFlight build
+
+## Native iOS Management Controls
+- [x] Add shared mobile APIs and queued task mutations for category-related and Direct Report management workflows
+- [x] Add native controls to create and manage top-level categories from the iPhone app
+- [x] Add native controls to create tasks as sub-categories beneath existing tasks
+- [x] Add native Direct Report management and task assignment controls
+- [x] Add end-to-end tests for category, sub-category, and Direct Report workflows
+- [x] Build and submit the native management update to TestFlight

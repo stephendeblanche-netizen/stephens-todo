@@ -15,7 +15,7 @@ export function addTemporaryTask(dashboard: DashboardPayload, input: TaskCreateI
   const temporaryTask: Task = {
     id: -Date.now(),
     categoryId: input.categoryId,
-    parentId: null,
+    parentId: input.parentId ?? null,
     text: input.text,
     note: "",
     done: false,
