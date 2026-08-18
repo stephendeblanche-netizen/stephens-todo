@@ -324,3 +324,11 @@
 - [x] Keep confirm and cancel actions reachable above the keyboard in every form sheet
 - [x] Add regression coverage for keyboard-safe form composition
 - [x] Build and submit the keyboard-safe form update to TestFlight
+
+## Native iOS Flexible Task Destinations
+- [x] Let a new task select an existing category from a native picker
+- [x] Let a task form create a new category inline and use it as the destination
+- [x] Let a sub-task select an existing parent task from a native picker
+- [x] Let a sub-task form create a new parent task inline and nest beneath it
+- [x] Add regression coverage for category and parent selection or inline creation
+- [x] Build and submit the flexible-destination update to TestFlight

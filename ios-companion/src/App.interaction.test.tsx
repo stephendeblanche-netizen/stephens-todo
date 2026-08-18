@@ -100,6 +100,52 @@ describe("restored iOS companion interactions", () => {
     expect(categoryInput.props.autoFocus).toBe(true);
   });
 
+  it("lets task forms choose an existing category or start inline category creation", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      categories: [...dashboard.categories, { id: 2, name: "Planning", kind: "normal", colorIndex: 1, sortOrder: 1 }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Use category Planning for task")!);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Planning"))).not.toHaveLength(0);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new category for this task")!);
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")).toHaveLength(1);
+  });
+
+  it("lets sub-task forms choose an existing parent task or create a new parent inline", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Current parent", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Available parent", sortOrder: 1 },
+      ],
+    });
+    api.createTaskRemote.mockReset().mockResolvedValueOnce({ id: 31 }).mockResolvedValueOnce({ id: 32 });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Current parent")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add sub-category under Current parent")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose parent task for sub-task")!);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Use Available parent as sub-task parent")).toBeTruthy();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new parent task")!);
+    const parentInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New parent task")[0]!;
+    const childInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add sub-category")[0]!;
+    await act(async () => { parentInput.props.onChangeText("New parent"); childInput.props.onChangeText("New child"); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add sub-category")!);
+    expect(api.createTaskRemote).toHaveBeenNthCalledWith(1, expect.objectContaining({ categoryId: 1, text: "New parent" }));
+    expect(api.createTaskRemote).toHaveBeenNthCalledWith(2, expect.objectContaining({ categoryId: 1, parentId: 31, text: "New child" }));
+  });
+
   it("creates categories and Direct Reports, assigns a Direct Report, and nests a sub-category", async () => {
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
