@@ -352,3 +352,10 @@
 - [x] Remove deleted categories and their tasks optimistically, then reconcile against the shared dashboard
 - [x] Add regression coverage for successful and failed category deletion refresh flows
 - [x] Verify category deletion against the shared data store and publish the corrective update
+
+## Duplicate Category Cleanup & Mutation Reliability
+- [x] Remove the duplicate Test categories and confirm their tasks are not retained unexpectedly
+- [x] Prevent task-plus-new-category creation from issuing duplicate category mutations
+- [x] Make category deletion use the same reliable shared deletion endpoint and refresh the native cache correctly
+- [x] Add regression coverage for single category creation and persistent category deletion
+- [ ] Build and submit the duplicate-category and deletion reliability fix to TestFlight

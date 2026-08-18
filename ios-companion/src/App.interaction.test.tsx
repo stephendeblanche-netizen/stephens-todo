@@ -126,6 +126,26 @@ describe("restored iOS companion interactions", () => {
     expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")).toHaveLength(1);
   });
 
+  it("submits an inline new category and its task only once when the confirmation action is pressed repeatedly", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new category for this task")!);
+    const categoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")[0]!;
+    const taskInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add task")[0]!;
+    await act(async () => { categoryInput.props.onChangeText("Test"); taskInput.props.onChangeText("Test"); });
+    const confirm = pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!;
+    await act(async () => { confirm.props.onPress(); confirm.props.onPress(); await Promise.resolve(); });
+    expect(api.createCategoryRemote).toHaveBeenCalledTimes(1);
+    expect(api.createCategoryRemote).toHaveBeenCalledWith({ name: "Test", sortOrder: 1, colorIndex: 0 });
+    expect(api.createTaskRemote).toHaveBeenCalledTimes(1);
+    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 2, text: "Test" }));
+  });
+
   it("uses a dedicated scrollable parent picker and supports creating a new parent inline", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,

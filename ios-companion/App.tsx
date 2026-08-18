@@ -69,7 +69,9 @@ export default function App() {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [reminders, setReminders] = useState(false);
+  const [savingEntity, setSavingEntity] = useState(false);
   const syncing = useRef(false);
+  const savingEntityRef = useRef(false);
   const load = useCallback(async () => {
     if (syncing.current) return;
     syncing.current = true; setError(null);
@@ -99,7 +101,10 @@ export default function App() {
   const returnToDestinationForm = () => { setSheet(destinationPickerOrigin ?? "task"); setDestinationPickerOrigin(null); };
   const ensureOnline = () => { if (online) return true; Alert.alert("Connect to manage", "Shared categories, Direct Reports, and ordering changes are saved when you are online."); return false; };
   const createTask = async (parent: Task | null) => {
-    if (!text.trim() || !dashboard) return;
+    if (!text.trim() || !dashboard || savingEntityRef.current) return;
+    savingEntityRef.current = true;
+    setSavingEntity(true);
+    try {
     let categoryId = selectedDestinationCategoryId ?? parent?.categoryId ?? (category === "all" ? dashboard.categories[0]?.id : category);
     if (!categoryId) { Alert.alert("Add a category first", "Create a category before adding work items."); return; }
     let parentId = sheet === "subCategory" ? (selectedParentTaskId ?? (selectedDestinationCategoryId === null && !newCategoryName.trim() ? parent?.id ?? null : null)) : null;
@@ -127,12 +132,18 @@ export default function App() {
     }
     const next = addTemporaryTask(dashboard, input); const temporaryTaskId = next.tasks[next.tasks.length - 1].id;
     setDashboard(next); await cacheDashboard(next); await enqueueMutation({ type: "create", temporaryTaskId, input }); setPending(await queueLength()); closeSheet(); if (online) void load();
+    } finally {
+      savingEntityRef.current = false;
+      setSavingEntity(false);
+    }
   };
   const saveEntity = async () => {
     if (!text.trim() || !dashboard || !sheet || sheet === "menu") return;
     if (sheet === "task") { await createTask(null); return; }
     if (sheet === "subCategory") { await createTask(subCategoryParent); return; }
-    if (!ensureOnline()) return;
+    if (!ensureOnline() || savingEntityRef.current) return;
+    savingEntityRef.current = true;
+    setSavingEntity(true);
     try {
       if (sheet === "category") {
         if (editingCategory) await updateCategoryRemote({ id: editingCategory.id, name: text.trim(), colorIndex: categoryColourIndex });
@@ -144,6 +155,7 @@ export default function App() {
       }
       closeSheet(); await load();
     } catch (reason) { Alert.alert("Could not save", reason instanceof Error ? reason.message : "Please try again."); }
+    finally { savingEntityRef.current = false; setSavingEntity(false); }
   };
   const editCategory = (item: Category) => { setEditingCategory(item); setText(item.name); setCategoryColourIndex(item.colorIndex); setSheet("category"); };
   const editReport = (item: DirectReport) => { setEditingReport(item); setText(item.name); setSheet("directReport"); };
@@ -235,7 +247,7 @@ export default function App() {
           {creatingNewParent && <TextInput value={newParentTaskName} onChangeText={setNewParentTaskName} placeholder="New parent task name" accessibilityLabel="New parent task" style={styles.destinationInput} />}
         </View>}
         {sheet === "category" && <View style={styles.palette}>{categoryColours.map((colour, colorIndex) => <Pressable key={colour} accessibilityRole="button" accessibilityLabel={`Select category colour ${colorIndex + 1}`} onPress={() => setCategoryColourIndex(colorIndex)} style={[styles.paletteColour, { backgroundColor: colour }, categoryColourIndex === colorIndex && styles.paletteColourSelected]}><Text style={styles.paletteCheck}>{categoryColourIndex === colorIndex ? "✓" : ""}</Text></Pressable>)}</View>}
-        <TextInput autoFocus value={text} onChangeText={setText} onSubmitEditing={() => void saveEntity()} returnKeyType="done" placeholder={formPlaceholder} accessibilityLabel={formTitle} style={styles.input} /><View style={styles.actions}><Pressable onPress={closeSheet}><Text style={styles.cancel}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Confirm ${formTitle.toLowerCase()}`} onPress={() => void saveEntity()} style={styles.save}><Text style={styles.saveText}>{formTitle}</Text></Pressable></View></> : null}
+        <TextInput autoFocus value={text} onChangeText={setText} onSubmitEditing={() => void saveEntity()} returnKeyType="done" placeholder={formPlaceholder} accessibilityLabel={formTitle} style={styles.input} /><View style={styles.actions}><Pressable onPress={closeSheet} disabled={savingEntity}><Text style={styles.cancel}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Confirm ${formTitle.toLowerCase()}`} disabled={savingEntity} onPress={() => void saveEntity()} style={[styles.save, savingEntity && { opacity: 0.58 }]}><Text style={styles.saveText}>{savingEntity ? "Saving…" : formTitle}</Text></Pressable></View></> : null}
       {sheet === "selectCategory" && <><View style={styles.pickerHeader}><View style={styles.reorderHeaderCopy}><Text style={styles.modalTitle}>Choose category</Text><Text style={styles.modalHint}>Scroll to any category, or create a new one. The keyboard is dismissed while you choose.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Return to task form" onPress={returnToDestinationForm} style={styles.finishReorder}><Text style={styles.finishReorderText}>Back</Text></Pressable></View><ScrollView nestedScrollEnabled style={styles.pickerScroll} contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator><>{(dashboard?.categories ?? []).map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`Use category ${item.name} for ${destinationPickerOrigin === "subCategory" ? "sub-task" : "task"}`} onPress={() => { setSelectedDestinationCategoryId(item.id); setCategory(item.id); setCreatingNewCategory(false); setNewCategoryName(""); if (formParent?.categoryId !== item.id) setSelectedParentTaskId(null); returnToDestinationForm(); }} style={styles.destinationRow}><View style={[styles.managementColour, { backgroundColor: categoryColour(item.colorIndex) }]} /><Text style={styles.managementName}>{item.name}</Text><Text style={styles.destinationArrow}>›</Text></Pressable>)}</><Pressable accessibilityRole="button" accessibilityLabel="Create a new category for this task" onPress={() => { setCreatingNewCategory(true); setSelectedDestinationCategoryId(null); setSelectedParentTaskId(null); returnToDestinationForm(); }} style={styles.pickerCreate}><Text style={styles.newDestinationText}>＋ Create a new category</Text></Pressable></ScrollView></>}
       {sheet === "selectParent" && <><View style={styles.pickerHeader}><View style={styles.reorderHeaderCopy}><Text style={styles.modalTitle}>Choose parent task</Text><Text style={styles.modalHint}>Scroll to any task in this category, or create a new parent task. The keyboard is dismissed while you choose.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Return to sub-task form" onPress={returnToDestinationForm} style={styles.finishReorder}><Text style={styles.finishReorderText}>Back</Text></Pressable></View><ScrollView nestedScrollEnabled style={styles.pickerScroll} contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator><>{eligibleParentTasks.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`Use ${item.text} as sub-task parent`} onPress={() => { setSelectedParentTaskId(item.id); setSelectedDestinationCategoryId(item.categoryId); setCategory(item.categoryId); setCreatingNewParent(false); setNewParentTaskName(""); returnToDestinationForm(); }} style={styles.destinationRow}><Text numberOfLines={1} style={styles.managementName}>{item.hierarchyDepth ? "↳ ".repeat(Math.min(item.hierarchyDepth, 3)) : ""}{item.text}</Text><Text style={styles.destinationArrow}>›</Text></Pressable>)}</><Pressable accessibilityRole="button" accessibilityLabel="Create a new parent task" onPress={() => { setCreatingNewParent(true); setSelectedParentTaskId(null); returnToDestinationForm(); }} style={styles.pickerCreate}><Text style={styles.newDestinationText}>＋ Create a new parent task</Text></Pressable></ScrollView></>}
       {sheet === "manageCategories" && <><Text style={styles.modalTitle}>Manage categories</Text><Text style={styles.modalHint}>Long-press and drag a category to change its order.</Text><DraggableFlatList data={dashboard?.categories ?? []} keyExtractor={(item) => String(item.id)} contentContainerStyle={styles.managementList} onDragEnd={({ data }) => void persistCategoryOrder(data)} renderItem={({ item, drag, isActive }) => <View style={[styles.managementRow, isActive && styles.managementRowActive]}><Pressable accessibilityRole="button" accessibilityLabel={`Drag category ${item.name}`} onLongPress={drag} delayLongPress={120} style={styles.dragHandle}><Text style={styles.dragHandleText}>⠿</Text></Pressable><View style={[styles.managementColour, { backgroundColor: categoryColour(item.colorIndex) }]} /><Text numberOfLines={1} style={styles.managementName}>{item.name}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Edit category ${item.name}`} onPress={() => editCategory(item)}><Text style={styles.editAction}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Delete category ${item.name}`} onPress={() => deleteCategory(item)}><Text style={styles.deleteAction}>Delete</Text></Pressable></View>} /><Pressable accessibilityRole="button" accessibilityLabel="Close category management" onPress={closeSheet}><Text style={styles.cancel}>Done</Text></Pressable></>}

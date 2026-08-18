@@ -72,7 +72,10 @@ export async function getAllCategories() {
 export async function createCategory(data: { name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(categories).values({ ...data, collapsed: false });
+  const name = data.name.trim();
+  const existing = await db.select({ id: categories.id }).from(categories).where(eq(categories.name, name)).limit(1);
+  if (existing[0]) return existing[0].id;
+  const [result] = await db.insert(categories).values({ ...data, name, collapsed: false });
   return (result as unknown as { insertId: number }).insertId;
 }
 
