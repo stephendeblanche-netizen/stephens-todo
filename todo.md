@@ -346,3 +346,9 @@
 - [x] Confirm whether deleting a category or sub-category will also delete its contained tasks and descendants before removal
 - [x] Add interaction and API regression coverage for every deletion path
 - [x] Build and submit the native deletion update to TestFlight
+
+## Native iOS Category Deletion Persistence Fix
+- [x] Make category deletion fail visibly instead of leaving a stale category in the native app
+- [x] Remove deleted categories and their tasks optimistically, then reconcile against the shared dashboard
+- [x] Add regression coverage for successful and failed category deletion refresh flows
+- [x] Verify category deletion against the shared data store and publish the corrective update

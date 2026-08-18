@@ -389,4 +389,32 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete category URGENT")!);
     expect(alertMock).toHaveBeenLastCalledWith("Delete category and its tasks?", expect.stringContaining("3 tasks"), expect.any(Array));
   });
+
+  it("removes a deleted category immediately after the shared dashboard confirms it, and restores it on failure", async () => {
+    const withoutUrgent = { ...dashboard, categories: [], tasks: [] };
+    api.getDashboard.mockReset().mockResolvedValueOnce(dashboard).mockResolvedValueOnce(withoutUrgent);
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage categories")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete category URGENT")!);
+    const successButtons = alertMock.mock.calls.at(-1)?.[2] as Array<{ onPress?: () => void }>;
+    await act(async () => { successButtons[1]?.onPress?.(); await Promise.resolve(); });
+    expect(api.deleteCategoryRemote).toHaveBeenCalledWith(1);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("URGENT"))).toHaveLength(0);
+
+    api.getDashboard.mockReset().mockResolvedValue(dashboard);
+    api.deleteCategoryRemote.mockRejectedValueOnce(new Error("Network unavailable"));
+    let failureRenderer: ReactTestRenderer;
+    await act(async () => { failureRenderer = create(<App />); await Promise.resolve(); });
+    const failureRoot = failureRenderer!.root;
+    await tap(pressables(failureRoot).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(failureRoot).find((node) => node.props.accessibilityLabel === "Manage categories")!);
+    await tap(pressables(failureRoot).find((node) => node.props.accessibilityLabel === "Delete category URGENT")!);
+    const failureButtons = alertMock.mock.calls.at(-1)?.[2] as Array<{ onPress?: () => void }>;
+    await act(async () => { failureButtons[1]?.onPress?.(); await Promise.resolve(); });
+    expect(alertMock).toHaveBeenLastCalledWith("Could not delete category", "Network unavailable");
+  });
 });

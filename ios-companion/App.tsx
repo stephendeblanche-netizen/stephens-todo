@@ -150,7 +150,27 @@ export default function App() {
   const deleteCategory = (item: Category) => {
     const containedCount = dashboard?.tasks.filter((task) => task.categoryId === item.id).length ?? 0;
     const detail = containedCount ? `“${item.name}” contains ${containedCount} task${containedCount === 1 ? "" : "s"}, including any nested sub-categories. Delete the category and all of them?` : `Delete the empty category “${item.name}”?`;
-    Alert.alert("Delete category and its tasks?", detail, [{ text: "Keep category", style: "cancel" }, { text: containedCount ? "Delete all" : "Delete category", style: "destructive", onPress: () => void (async () => { if (!ensureOnline()) return; await deleteCategoryRemote(item.id); if (category === item.id) setCategory("all"); await load(); })() }]);
+    Alert.alert("Delete category and its tasks?", detail, [{ text: "Keep category", style: "cancel" }, { text: containedCount ? "Delete all" : "Delete category", style: "destructive", onPress: () => void (async () => {
+      if (!dashboard || !ensureOnline()) return;
+      const beforeDelete = dashboard;
+      const wasSelectedCategory = category === item.id;
+      const optimistic = { ...dashboard, categories: dashboard.categories.filter((entry) => entry.id !== item.id), tasks: dashboard.tasks.filter((task) => task.categoryId !== item.id), syncedAt: Date.now() };
+      setDashboard(optimistic);
+      await cacheDashboard(optimistic);
+      if (wasSelectedCategory) setCategory("all");
+      try {
+        await deleteCategoryRemote(item.id);
+        const refreshed = await getDashboard();
+        if (refreshed.categories.some((entry) => entry.id === item.id)) throw new Error("The shared dashboard did not confirm that this category was removed.");
+        setDashboard(refreshed);
+        await cacheDashboard(refreshed);
+      } catch (reason) {
+        setDashboard(beforeDelete);
+        await cacheDashboard(beforeDelete);
+        if (wasSelectedCategory) setCategory(item.id);
+        Alert.alert("Could not delete category", reason instanceof Error ? reason.message : "The category was not removed. Please try again.");
+      }
+    })() }]);
   };
   const deleteReport = (item: DirectReport) => Alert.alert("Delete Direct Report?", `Tasks assigned to ${item.name} will be set to N/A.`, [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => void (async () => { if (!ensureOnline()) return; await deleteDirectReportRemote(item.id); await load(); })() }]);
   const persistCategoryOrder = async (data: Category[]) => { if (!ensureOnline()) return; try { await reorderCategoriesRemote(data.map((item, sortOrder) => ({ id: item.id, sortOrder }))); await load(); } catch { Alert.alert("Could not reorder", "Please try again."); } };
