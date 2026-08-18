@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
-import { addTask, createCategoryRemote, createDirectReportRemote, deleteCategoryRemote, deleteDirectReportRemote, getDashboard, patchTask, reorderCategoriesRemote, reorderTasksRemote, updateCategoryRemote, updateDirectReportRemote } from "./api";
+import { addTask, createCategoryRemote, createDirectReportRemote, deleteCategoryRemote, deleteDirectReportRemote, deleteTaskRemote, getDashboard, patchTask, reorderCategoriesRemote, reorderTasksRemote, updateCategoryRemote, updateDirectReportRemote } from "./api";
 
 const response = (json: unknown) => ({ ok: true, json: async () => json }) as Response;
 const envelope = (json: unknown) => ({ result: { data: { json } } });
@@ -70,6 +70,7 @@ describe("iOS companion dashboard workflows", () => {
 
     await updateCategoryRemote({ id: 3, name: "Planning", colorIndex: 6 });
     await deleteCategoryRemote(3);
+    await deleteTaskRemote(10);
     await reorderCategoriesRemote([{ id: 4, sortOrder: 0 }, { id: 3, sortOrder: 1 }]);
     await updateDirectReportRemote({ id: 7, name: "Jordan" });
     await deleteDirectReportRemote(7);
@@ -78,9 +79,11 @@ describe("iOS companion dashboard workflows", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/trpc/categories.update");
     expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { id: 3, name: "Planning", colorIndex: 6 } }) }));
     expect(fetchMock.mock.calls[1]?.[0]).toContain("/api/trpc/categories.delete");
-    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/trpc/categories.reorder");
-    expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/trpc/directReports.update");
-    expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/trpc/directReports.delete");
-    expect(fetchMock.mock.calls[5]?.[0]).toContain("/api/trpc/tasks.reorder");
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/api/trpc/tasks.delete");
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ json: { id: 10 } }) }));
+    expect(fetchMock.mock.calls[3]?.[0]).toContain("/api/trpc/categories.reorder");
+    expect(fetchMock.mock.calls[4]?.[0]).toContain("/api/trpc/directReports.update");
+    expect(fetchMock.mock.calls[5]?.[0]).toContain("/api/trpc/directReports.delete");
+    expect(fetchMock.mock.calls[6]?.[0]).toContain("/api/trpc/tasks.reorder");
   });
 });

@@ -50,6 +50,10 @@ export function createTaskRemote(input: TaskCreateInput) {
   return mutate<{ id: number }>("tasks.create", input);
 }
 
+export function deleteTaskRemote(id: number) {
+  return mutate<{ success: true }>("tasks.delete", { id });
+}
+
 export function createCategoryRemote(input: { name: string; sortOrder: number; colorIndex: number }) {
   return mutate<{ id: number }>("categories.create", { ...input, kind: "normal" });
 }

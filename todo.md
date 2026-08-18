@@ -338,3 +338,11 @@
 - [x] Keep every destination option reachable while the iPhone keyboard is open
 - [x] Add regression coverage for long, keyboard-safe destination lists
 - [x] Build and submit the scrollable picker correction to TestFlight
+
+## Native iOS Intuitive Deletion
+- [x] Add a bulk delete action to native task selection mode with explicit selected-task confirmation
+- [x] Add a left-swipe delete action for individual tasks with confirmation protection
+- [x] Make category and sub-category deletion controls discoverable in their primary task and management views
+- [x] Confirm whether deleting a category or sub-category will also delete its contained tasks and descendants before removal
+- [x] Add interaction and API regression coverage for every deletion path
+- [x] Build and submit the native deletion update to TestFlight

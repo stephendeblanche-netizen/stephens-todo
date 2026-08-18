@@ -3,13 +3,13 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from "rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const alertMock = vi.hoisted(() => vi.fn());
-const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn(), createCategoryRemote: vi.fn(), createDirectReportRemote: vi.fn(), updateCategoryRemote: vi.fn(), deleteCategoryRemote: vi.fn(), reorderCategoriesRemote: vi.fn(), updateDirectReportRemote: vi.fn(), deleteDirectReportRemote: vi.fn(), reorderTasksRemote: vi.fn() }));
+const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn(), deleteTaskRemote: vi.fn(), createCategoryRemote: vi.fn(), createDirectReportRemote: vi.fn(), updateCategoryRemote: vi.fn(), deleteCategoryRemote: vi.fn(), reorderCategoriesRemote: vi.fn(), updateDirectReportRemote: vi.fn(), deleteDirectReportRemote: vi.fn(), reorderTasksRemote: vi.fn() }));
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 vi.mock("react-native-gesture-handler", async () => {
   const ReactModule = await import("react");
-  return { GestureHandlerRootView: ({ children, ...props }: any) => ReactModule.createElement("GestureHandlerRootView", props, children) };
+  return { GestureHandlerRootView: ({ children, ...props }: any) => ReactModule.createElement("GestureHandlerRootView", props, children), Swipeable: ({ children, renderRightActions, ...props }: any) => ReactModule.createElement("Swipeable", props, children, renderRightActions?.()) };
 });
 vi.mock("react-native-draggable-flatlist", async () => {
   const ReactModule = await import("react");
@@ -41,6 +41,7 @@ describe("restored iOS companion interactions", () => {
     api.getDashboard.mockReset().mockResolvedValue(dashboard);
     api.patchTask.mockReset().mockResolvedValue({ success: true });
     api.createTaskRemote.mockReset().mockResolvedValue({ id: 10 });
+    api.deleteTaskRemote.mockReset().mockResolvedValue({ success: true });
     api.createCategoryRemote.mockReset().mockResolvedValue({ id: 2 });
     api.createDirectReportRemote.mockReset().mockResolvedValue({ id: 5 });
     api.updateCategoryRemote.mockReset().mockResolvedValue({ success: true });
@@ -350,5 +351,42 @@ describe("restored iOS companion interactions", () => {
       { id: 10, categoryId: 1, parentId: 9, sortOrder: 0 },
       { id: 11, categoryId: 1, parentId: 9, sortOrder: 1 },
     ]);
+  });
+
+  it("confirms swipe and bulk task deletion, including nested sub-categories, before removing items", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Parent task", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Standalone task", sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 11, parentId: 9, text: "Nested sub-category", sortOrder: 0 },
+      ],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Swipe delete Parent task")!);
+    expect(alertMock).toHaveBeenLastCalledWith("Delete task?", expect.stringContaining("2 items"), expect.any(Array));
+    const swipeDeleteButtons = alertMock.mock.calls.at(-1)?.[2] as Array<{ onPress?: () => void }>;
+    await act(async () => { swipeDeleteButtons[1]?.onPress?.(); await Promise.resolve(); });
+    expect(api.deleteTaskRemote).toHaveBeenCalledWith(9);
+
+    api.deleteTaskRemote.mockClear();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select multiple tasks")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select Parent task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Select Standalone task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete selected tasks")!);
+    expect(alertMock).toHaveBeenLastCalledWith("Delete selected tasks?", expect.stringContaining("3 items"), expect.any(Array));
+    const bulkDeleteButtons = alertMock.mock.calls.at(-1)?.[2] as Array<{ onPress?: () => void }>;
+    await act(async () => { bulkDeleteButtons[1]?.onPress?.(); await Promise.resolve(); });
+    expect(api.deleteTaskRemote).toHaveBeenCalledTimes(2);
+    expect(api.deleteTaskRemote).toHaveBeenNthCalledWith(1, 9);
+    expect(api.deleteTaskRemote).toHaveBeenNthCalledWith(2, 10);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage categories")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete category URGENT")!);
+    expect(alertMock).toHaveBeenLastCalledWith("Delete category and its tasks?", expect.stringContaining("3 tasks"), expect.any(Array));
   });
 });
