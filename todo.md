@@ -332,3 +332,9 @@
 - [x] Let a sub-task form create a new parent task inline and nest beneath it
 - [x] Add regression coverage for category and parent selection or inline creation
 - [x] Build and submit the flexible-destination update to TestFlight
+
+## Native iOS Scrollable Destination Pickers
+- [x] Replace inline category and parent-task dropdowns with dedicated scrollable selection views
+- [x] Keep every destination option reachable while the iPhone keyboard is open
+- [x] Add regression coverage for long, keyboard-safe destination lists
+- [x] Build and submit the scrollable picker correction to TestFlight

@@ -21,7 +21,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: stub("ActivityIndicator"), Alert: { alert: alertMock }, FlatList: ({ data, renderItem, ListEmptyComponent, ...props }: any) => ReactModule.createElement("FlatList", props, data.length ? data.map((item: any, index: number) => renderItem({ item, index })) : ListEmptyComponent),
     Modal: ({ visible, children }: any) => visible ? ReactModule.createElement("Modal", null, children) : null,
-    KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"),
+    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"),
   };
 });
 
@@ -100,10 +100,10 @@ describe("restored iOS companion interactions", () => {
     expect(categoryInput.props.autoFocus).toBe(true);
   });
 
-  it("lets task forms choose an existing category or start inline category creation", async () => {
+  it("uses a dedicated scrollable category picker that keeps long destination lists reachable", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
-      categories: [...dashboard.categories, { id: 2, name: "Planning", kind: "normal", colorIndex: 1, sortOrder: 1 }],
+      categories: Array.from({ length: 18 }, (_, index) => ({ id: index + 1, name: `Category ${index + 1}`, kind: "normal" as const, colorIndex: index % 8, sortOrder: index })),
     });
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
@@ -112,21 +112,23 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Use category Planning for task")!);
-    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Planning"))).not.toHaveLength(0);
+    const scrollViews = root.findAll((node) => String(node.type) === "ScrollView");
+    const pickerScroll = scrollViews.find((node) => node.props.nestedScrollEnabled === true)!;
+    expect(scrollViews[0]?.props.scrollEnabled).toBe(false);
+    expect(pickerScroll.props.showsVerticalScrollIndicator).toBe(true);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Use category Category 18 for task")).toBeTruthy();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Use category Category 18 for task")!);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Category 18"))).not.toHaveLength(0);
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new category for this task")!);
     expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")).toHaveLength(1);
   });
 
-  it("lets sub-task forms choose an existing parent task or create a new parent inline", async () => {
+  it("uses a dedicated scrollable parent picker and supports creating a new parent inline", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
-      tasks: [
-        { ...dashboard.tasks[0], id: 9, text: "Current parent", sortOrder: 0 },
-        { ...dashboard.tasks[0], id: 10, text: "Available parent", sortOrder: 1 },
-      ],
+      tasks: Array.from({ length: 18 }, (_, index) => ({ ...dashboard.tasks[0], id: index + 9, text: index === 0 ? "Current parent" : `Available parent ${index}`, sortOrder: index })),
     });
     api.createTaskRemote.mockReset().mockResolvedValueOnce({ id: 31 }).mockResolvedValueOnce({ id: 32 });
     let renderer: ReactTestRenderer;
@@ -136,7 +138,9 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Current parent")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add sub-category under Current parent")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose parent task for sub-task")!);
-    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Use Available parent as sub-task parent")).toBeTruthy();
+    const pickerScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => node.props.nestedScrollEnabled === true)!;
+    expect(pickerScroll.props.showsVerticalScrollIndicator).toBe(true);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Use Available parent 17 as sub-task parent")).toBeTruthy();
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new parent task")!);
     const parentInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New parent task")[0]!;
     const childInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add sub-category")[0]!;
