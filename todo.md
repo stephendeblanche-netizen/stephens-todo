@@ -318,3 +318,9 @@
 - [x] Make nested sub-categories visually subordinate through indentation, connector treatment, and hierarchy labels
 - [x] Add regression coverage for ordered nested task rendering
 - [x] Build and submit the hierarchy presentation update to TestFlight
+
+## Native iOS Keyboard-Safe Forms
+- [x] Keep native add and edit text fields visible while the iPhone keyboard is open
+- [x] Keep confirm and cancel actions reachable above the keyboard in every form sheet
+- [x] Add regression coverage for keyboard-safe form composition
+- [x] Build and submit the keyboard-safe form update to TestFlight

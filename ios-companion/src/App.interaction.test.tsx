@@ -21,7 +21,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: stub("ActivityIndicator"), Alert: { alert: alertMock }, FlatList: ({ data, renderItem, ListEmptyComponent, ...props }: any) => ReactModule.createElement("FlatList", props, data.length ? data.map((item: any, index: number) => renderItem({ item, index })) : ListEmptyComponent),
     Modal: ({ visible, children }: any) => visible ? ReactModule.createElement("Modal", null, children) : null,
-    Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"),
+    KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"),
   };
 });
 
@@ -79,6 +79,25 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, text: "Create from iPhone", priority: "medium" }));
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("keeps native add forms inside a keyboard-aware scroll container", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add category")!);
+    const keyboardAvoider = root.findAll((node) => String(node.type) === "KeyboardAvoidingView")[0]!;
+    const formScrollView = root.findAll((node) => String(node.type) === "ScrollView")[0]!;
+    const categoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add category")[0]!;
+
+    expect(keyboardAvoider.props.behavior).toBe("padding");
+    expect(keyboardAvoider.props.keyboardVerticalOffset).toBe(8);
+    expect(formScrollView.props.keyboardShouldPersistTaps).toBe("handled");
+    expect(formScrollView.props.keyboardDismissMode).toBe("interactive");
+    expect(categoryInput.props.returnKeyType).toBe("done");
+    expect(categoryInput.props.autoFocus).toBe(true);
   });
 
   it("creates categories and Direct Reports, assigns a Direct Report, and nests a sub-category", async () => {
