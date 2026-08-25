@@ -358,4 +358,14 @@
 - [x] Prevent task-plus-new-category creation from issuing duplicate category mutations
 - [x] Make category deletion use the same reliable shared deletion endpoint and refresh the native cache correctly
 - [x] Add regression coverage for single category creation and persistent category deletion
-- [ ] Build and submit the duplicate-category and deletion reliability fix to TestFlight
+- [x] Build and submit the duplicate-category and deletion reliability fix to TestFlight
+- [x] Retry the restored-project iOS TestFlight build submission and record the outcome
+
+## Replacement iOS Signing Assets
+- [x] Validate the Windows-generated Apple Distribution certificate-signing request
+- [x] Create and download a replacement Apple Distribution certificate
+- [x] Export the matched Windows private key and certificate as a password-protected `.p12` file
+- [x] Regenerate the App Store provisioning profile with the replacement certificate
+- [x] Install the replacement signing package and submit the duplicate-category reliability update to TestFlight
+- [x] Validate the replacement signing package through EAS credential upload and record the unqueued cloud-build outcome
+- [x] Retry the cloud build with the validated replacement signing credentials and record the outcome
