@@ -123,7 +123,30 @@ describe("restored iOS companion interactions", () => {
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task category")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Create a new category for this task")!);
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")).toHaveLength(1);
+    const inlineCategoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "New category for task")[0]!;
+    const taskInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add task")[0]!;
+    expect(inlineCategoryInput.props.autoFocus).toBe(true);
+    expect(taskInput.props.autoFocus).toBe(false);
+  });
+
+  it("shows category management and direct selected-category deletion outside the add menu", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      categories: [...dashboard.categories, { id: 2, name: "Planning", kind: "normal" as const, colorIndex: 1, sortOrder: 1 }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by Planning")!);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")).toBeTruthy();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete selected category Planning")!);
+    expect(alertMock).toHaveBeenLastCalledWith("Delete category and its tasks?", expect.stringContaining("Planning"), expect.any(Array));
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")!);
+    const draggableCategories = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
+    await act(async () => { draggableCategories.props.onDragEnd({ data: [{ id: 2, name: "Planning", sortOrder: 1 }, { id: 1, name: "URGENT", sortOrder: 0 }] }); await Promise.resolve(); });
+    expect(api.reorderCategoriesRemote).toHaveBeenCalledWith([{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }]);
   });
 
   it("submits an inline new category and its task only once when the confirmation action is pressed repeatedly", async () => {

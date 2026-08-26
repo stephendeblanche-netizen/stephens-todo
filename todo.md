@@ -369,3 +369,10 @@
 - [x] Install the replacement signing package and submit the duplicate-category reliability update to TestFlight
 - [x] Validate the replacement signing package through EAS credential upload and record the unqueued cloud-build outcome
 - [x] Retry the cloud build with the validated replacement signing credentials and record the outcome
+
+## Native iOS Category Management Discoverability
+- [x] Add an obvious category-management entry point with a protected delete action in the main category controls
+- [x] Focus the inline New category name field when creating a category during task entry
+- [x] Add touch-friendly category reordering with persistent order updates
+- [x] Add interaction and API regression coverage for category deletion, field focus, and category reordering
+- [x] Build and submit the native category-management update to TestFlight
