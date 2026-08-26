@@ -401,3 +401,9 @@
 - [x] Match Select and Order to the green filled Add-button style while retaining their action semantics
 - [x] Add regression coverage for the aligned native header actions
 - [x] Build and submit the refined native update to TestFlight
+
+## iPhone Header Single-Line Labels
+- [x] Keep Stephen’s Workspace on a single unwrapped top line in the native header
+- [x] Keep To-Do on one line while positioning Select, Order, and Add to the right
+- [x] Add narrow-iPhone regression coverage for the unwrapped header composition
+- [x] Build and submit the corrected native update to TestFlight

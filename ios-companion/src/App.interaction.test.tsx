@@ -86,13 +86,17 @@ describe("restored iOS companion interactions", () => {
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("aligns Select, Order, and Add as matching filled header actions", async () => {
+  it("keeps workspace and title labels unwrapped with matching right-aligned header actions", async () => {
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
+    const workspace = root.findAll((node) => String(node.type) === "Text" && node.children.includes("STEPHEN’S WORKSPACE"))[0]!;
+    const heading = root.findAll((node) => String(node.type) === "Text" && node.children.includes("To-Do"))[0]!;
     const selectAction = pressables(root).find((node) => node.props.accessibilityLabel === "Select multiple tasks")!;
     const orderAction = pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!;
     const addAction = pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!;
+    expect(workspace.props.numberOfLines).toBe(1);
+    expect(heading.props.numberOfLines).toBe(1);
     expect(selectAction.props.style).toEqual(orderAction.props.style);
     expect(selectAction.props.style).toEqual(addAction.props.style);
     expect(selectAction.props.style).toMatchObject({ backgroundColor: "#257863", borderRadius: 12, paddingVertical: 10 });
