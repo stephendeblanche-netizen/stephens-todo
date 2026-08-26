@@ -382,3 +382,10 @@
 - [x] Replace user-facing Direct Reports language with Responsible Colleague across the dashboard and native iOS companion
 - [x] Add regression coverage for narrow iPhone category management and updated colleague terminology
 - [x] Build and submit the corrective native update to TestFlight
+
+## iPhone Compact Category Controls & Management Recovery
+- [x] Restore category rows in the native Manage categories screen and preserve drag, edit, delete, and Done controls
+- [x] Replace iPhone category chips with a compact category selector and adjacent Manage categories action
+- [x] Add a user-controlled toggle to hide or restore category, Manage categories, and priority controls for more task-list space
+- [x] Add regression coverage for category-list rendering, compact controls, and controls visibility toggling
+- [x] Build and submit the corrective native update to TestFlight

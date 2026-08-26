@@ -21,7 +21,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: stub("ActivityIndicator"), Alert: { alert: alertMock }, FlatList: ({ data, renderItem, ListEmptyComponent, ...props }: any) => ReactModule.createElement("FlatList", props, data.length ? data.map((item: any, index: number) => renderItem({ item, index })) : ListEmptyComponent),
     Modal: ({ visible, children }: any) => visible ? ReactModule.createElement("Modal", null, children) : null,
-    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"),
+    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"), useWindowDimensions: () => ({ width: 375, height: 812, scale: 1, fontScale: 1 }),
   };
 });
 
@@ -35,6 +35,10 @@ const dashboard = {
 
 const pressables = (root: ReactTestInstance) => root.findAll((node) => String(node.type) === "Pressable");
 const tap = async (instance: ReactTestInstance) => act(async () => { instance.props.onPress?.(); await Promise.resolve(); });
+const chooseLandingCategory = async (root: ReactTestInstance, categoryName: string) => {
+  await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task-list category")!);
+  await tap(pressables(root).find((node) => node.props.accessibilityLabel === `Select category ${categoryName}`)!);
+};
 
 describe("restored iOS companion interactions", () => {
   beforeEach(() => {
@@ -138,7 +142,7 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
 
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by Planning")!);
+    await chooseLandingCategory(root, "Planning");
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")).toBeTruthy();
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete selected category Planning")!);
     expect(alertMock).toHaveBeenLastCalledWith("Delete category and its tasks?", expect.stringContaining("Planning"), expect.any(Array));
@@ -148,6 +152,8 @@ describe("restored iOS companion interactions", () => {
     expect(root.findAll((node) => String(node.type) === "ScrollView")).toHaveLength(0);
     expect(draggableCategories.props.style).toMatchObject({ flex: 1, minHeight: 0 });
     expect(draggableCategories.props.showsVerticalScrollIndicator).toBe(true);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Drag category URGENT")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Drag category Planning")).toBeTruthy();
     await act(async () => { draggableCategories.props.onDragEnd({ data: [{ id: 2, name: "Planning", sortOrder: 1 }, { id: 1, name: "URGENT", sortOrder: 0 }] }); await Promise.resolve(); });
     expect(api.reorderCategoriesRemote).toHaveBeenCalledWith([{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }]);
   });
@@ -216,7 +222,7 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add responsible colleague")!);
     expect(api.createDirectReportRemote).toHaveBeenCalledWith({ name: "Jordan", sortOrder: 1 });
 
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by All tasks")!);
+    await chooseLandingCategory(root, "All tasks");
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Prepare brief")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ava to Prepare brief")!);
     expect(api.patchTask).toHaveBeenCalledWith(9, { accountableDirectReportId: 4 });
@@ -228,7 +234,7 @@ describe("restored iOS companion interactions", () => {
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, parentId: 9, text: "Prepare proposal" }));
   });
 
-  it("renders compact single-line category chips and reserves space for priority controls on iPhone", async () => {
+  it("renders a compact category selector, adjacent management action, and hideable task controls on iPhone", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
       categories: [
@@ -241,15 +247,18 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
 
-    const categoryScroller = root.findAll((node) => String(node.type) === "FlatList" && node.props.horizontal)[0]!;
-    expect(categoryScroller.props.style).toMatchObject({ height: 48, flexGrow: 0, flexShrink: 0 });
-    const categoryControl = pressables(root).find((node) => node.props.accessibilityLabel === "Filter by Operational Reporting")!;
-    expect(categoryControl.props.style).toContainEqual(expect.objectContaining({ height: 40, maxWidth: 176 }));
-    const categoryLabel = root.findAll((node) => String(node.type) === "Text" && node.children.includes("Operational Reporting"))[0]!;
-    expect(categoryLabel.props.numberOfLines).toBe(1);
-
-    const priorityControl = pressables(root).find((node) => node.props.accessibilityLabel?.startsWith("Change priority for A long task"))!;
-    expect(priorityControl.props.style).toContainEqual(expect.objectContaining({ minWidth: 78 }));
+    expect(root.findAll((node) => String(node.type) === "FlatList" && node.props.horizontal)).toHaveLength(0);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task-list category")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")).toBeTruthy();
+    await chooseLandingCategory(root, "Operational Reporting");
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Operational Reporting"))).not.toHaveLength(0);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Hide task controls")!);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Show task controls")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Choose task-list category")).toBeFalsy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")).toBeFalsy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Filter priority high")).toBeFalsy();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Show task controls")!);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Filter priority high")).toBeTruthy();
   });
 
   it("edits colours, protects delete actions, and persists category and nested sub-category drag order", async () => {
@@ -309,7 +318,7 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
 
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by URGENT")!);
+    await chooseLandingCategory(root, "URGENT");
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!);
     const draggableTasks = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
     await act(async () => { draggableTasks.props.onDragEnd({ data: [{ id: 10, categoryId: 1 }, { id: 9, categoryId: 1 }] }); await Promise.resolve(); });
@@ -331,7 +340,7 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
 
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by URGENT")!);
+    await chooseLandingCategory(root, "URGENT");
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!);
     expect(root.findAll((node) => String(node.type) === "Modal")).toHaveLength(1);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Finish reordering and return to task list")!);
