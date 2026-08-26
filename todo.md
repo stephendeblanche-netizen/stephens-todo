@@ -395,3 +395,9 @@
 - [x] Preserve category reordering, edit, delete, and Done controls in the corrected sheet
 - [x] Add a device-sized regression test proving management rows render when dashboard categories exist
 - [x] Build and submit the corrective native update to TestFlight
+
+## iPhone Header Action Alignment
+- [x] Move the Select, Order, and Add action group slightly left within the native header
+- [x] Match Select and Order to the green filled Add-button style while retaining their action semantics
+- [x] Add regression coverage for the aligned native header actions
+- [x] Build and submit the refined native update to TestFlight

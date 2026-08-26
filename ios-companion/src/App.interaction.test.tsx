@@ -86,6 +86,18 @@ describe("restored iOS companion interactions", () => {
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
   });
 
+  it("aligns Select, Order, and Add as matching filled header actions", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+    const selectAction = pressables(root).find((node) => node.props.accessibilityLabel === "Select multiple tasks")!;
+    const orderAction = pressables(root).find((node) => node.props.accessibilityLabel === "Reorder tasks in current category")!;
+    const addAction = pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!;
+    expect(selectAction.props.style).toEqual(orderAction.props.style);
+    expect(selectAction.props.style).toEqual(addAction.props.style);
+    expect(selectAction.props.style).toMatchObject({ backgroundColor: "#257863", borderRadius: 12, paddingVertical: 10 });
+  });
+
   it("keeps native add forms inside a keyboard-aware scroll container", async () => {
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
