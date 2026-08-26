@@ -343,19 +343,19 @@ describe("Dashboard focused priority views", () => {
     expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
   });
 
-  it("offers N/A and Direct Reports for task accountability and saves the selection", async () => {
+  it("offers N/A and Responsible Colleagues for task accountability and saves the selection", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
-    const accountable = screen.getAllByRole("combobox", { name: "Accountable Direct Report for Urgent high today" })[0] as HTMLSelectElement;
+    const accountable = screen.getAllByRole("combobox", { name: "Responsible Colleague for Urgent high today" })[0] as HTMLSelectElement;
     expect(Array.from(accountable.options).map((option) => option.text)).toEqual(["N/A", "Alex Morgan"]);
     await user.selectOptions(accountable, "na");
     expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, accountableDirectReportId: null });
   });
 
-  it("filters the main task list to a selected Direct Report", async () => {
+  it("filters the main task list to a selected Responsible Colleague", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Accountable Direct Report filter" }), "1");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Responsible Colleague filter" }), "1");
     expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
     expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
     expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
@@ -385,30 +385,30 @@ describe("Dashboard focused priority views", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
   });
 
-  it("adds a Direct Report from the management section", async () => {
+  it("adds a Responsible Colleague from the management section", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
-    await user.type(screen.getByRole("textbox", { name: "New Direct Report name" }), "Priya Shah");
-    await user.click(screen.getByRole("button", { name: "Add Direct Report" }));
+    await user.type(screen.getByRole("textbox", { name: "New Responsible Colleague name" }), "Priya Shah");
+    await user.click(screen.getByRole("button", { name: "Add Responsible Colleague" }));
     expect(fixture.createDirectReportMutate).toHaveBeenCalledWith(
       { name: "Priya Shah", sortOrder: 1 },
       expect.any(Object),
     );
   });
 
-  it("keeps the bottom-positioned Direct Reports manager usable at a narrow viewport", async () => {
+  it("keeps the bottom-positioned Responsible Colleagues manager usable at a narrow viewport", async () => {
     const user = userEvent.setup();
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
     window.dispatchEvent(new Event("resize"));
 
     renderDashboard("all");
-    const manager = screen.getByRole("region", { name: "Direct Reports manager" });
+    const manager = screen.getByRole("region", { name: "Responsible Colleagues manager" });
     const footer = screen.getByRole("contentinfo");
     expect(manager.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
-    await user.type(screen.getByRole("textbox", { name: "New Direct Report name" }), "Morgan Lee");
-    await user.click(screen.getByRole("button", { name: "Add Direct Report" }));
+    await user.type(screen.getByRole("textbox", { name: "New Responsible Colleague name" }), "Morgan Lee");
+    await user.click(screen.getByRole("button", { name: "Add Responsible Colleague" }));
     expect(fixture.createDirectReportMutate).toHaveBeenCalledWith(
       { name: "Morgan Lee", sortOrder: 1 },
       expect.any(Object),
@@ -459,7 +459,7 @@ describe("Dashboard focused priority views", () => {
     const flagButtons = screen.getAllByRole("button", { name: "Toggle details for Urgent high today" });
     await user.click(flagButtons[0]!);
     expect(screen.getByRole("region", { name: "Task details for Urgent high today" })).not.toBeNull();
-    expect(screen.getByLabelText("Accountable Direct Report details for Urgent high today")).not.toBeNull();
+    expect(screen.getByLabelText("Responsible Colleague details for Urgent high today")).not.toBeNull();
     const detailNotes = screen.getByLabelText("Notes in task details for Urgent high today");
     await user.clear(detailNotes);
     await user.type(detailNotes, "Updated through priority details");

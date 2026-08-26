@@ -145,6 +145,9 @@ describe("restored iOS companion interactions", () => {
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")!);
     const draggableCategories = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
+    expect(root.findAll((node) => String(node.type) === "ScrollView")).toHaveLength(0);
+    expect(draggableCategories.props.style).toMatchObject({ flex: 1, minHeight: 0 });
+    expect(draggableCategories.props.showsVerticalScrollIndicator).toBe(true);
     await act(async () => { draggableCategories.props.onDragEnd({ data: [{ id: 2, name: "Planning", sortOrder: 1 }, { id: 1, name: "URGENT", sortOrder: 0 }] }); await Promise.resolve(); });
     expect(api.reorderCategoriesRemote).toHaveBeenCalledWith([{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }]);
   });
@@ -194,7 +197,7 @@ describe("restored iOS companion interactions", () => {
     expect(api.createTaskRemote).toHaveBeenNthCalledWith(2, expect.objectContaining({ categoryId: 1, parentId: 31, text: "New child" }));
   });
 
-  it("creates categories and Direct Reports, assigns a Direct Report, and nests a sub-category", async () => {
+  it("creates categories and Responsible Colleagues, assigns a Responsible Colleague, and nests a sub-category", async () => {
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });
     const root = renderer!.root;
@@ -207,15 +210,15 @@ describe("restored iOS companion interactions", () => {
     expect(api.createCategoryRemote).toHaveBeenCalledWith({ name: "Planning", sortOrder: 1, colorIndex: 0 });
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add Direct Report")!);
-    const reportInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add Direct Report")[0]!;
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add Responsible Colleague")!);
+    const reportInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add Responsible Colleague")[0]!;
     await act(async () => { reportInput.props.onChangeText("Jordan"); });
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add direct report")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add responsible colleague")!);
     expect(api.createDirectReportRemote).toHaveBeenCalledWith({ name: "Jordan", sortOrder: 1 });
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter by All tasks")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Prepare brief")!);
-    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Ava to Prepare brief")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ava to Prepare brief")!);
     expect(api.patchTask).toHaveBeenCalledWith(9, { accountableDirectReportId: 4 });
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add sub-category under Prepare brief")!);

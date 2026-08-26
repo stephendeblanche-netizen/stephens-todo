@@ -376,3 +376,9 @@
 - [x] Add touch-friendly category reordering with persistent order updates
 - [x] Add interaction and API regression coverage for category deletion, field focus, and category reordering
 - [x] Build and submit the native category-management update to TestFlight
+
+## iPhone Category Management & Responsible Colleague Terminology
+- [x] Correct the iPhone-specific rendering of the native Manage categories screen while retaining iPad usability
+- [x] Replace user-facing Direct Reports language with Responsible Colleague across the dashboard and native iOS companion
+- [x] Add regression coverage for narrow iPhone category management and updated colleague terminology
+- [x] Build and submit the corrective native update to TestFlight

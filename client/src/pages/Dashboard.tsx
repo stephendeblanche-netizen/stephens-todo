@@ -571,7 +571,7 @@ function TaskItem({
             onPointerDown={(event) => event.stopPropagation()}
             className="mt-0.5 max-w-[112px] shrink rounded border px-1 py-0.5 text-[10px] font-[inherit]"
             style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-            aria-label={`Accountable Direct Report for ${node.text}`}
+            aria-label={`Responsible Colleague for ${node.text}`}
           >
             <option value="na">N/A</option>
             {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
@@ -771,13 +771,13 @@ function TaskItem({
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
-            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Accountable</label>
+            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Responsible Colleague</label>
             <select
               value={node.accountableDirectReportId ?? "na"}
               onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
               className="h-7 max-w-[160px] rounded-md border px-2 text-[11px] font-[inherit]"
               style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
-              aria-label={`Accountable Direct Report details for ${node.text}`}
+              aria-label={`Responsible Colleague details for ${node.text}`}
             >
               <option value="na">N/A</option>
               {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
@@ -994,7 +994,7 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: Tod
           onChange={(event) => onUpdate(task.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
           className="h-7 max-w-[150px] rounded-md border px-1.5 text-[11px] font-[inherit]"
           style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-          aria-label={`Accountable Direct Report for ${task.text}`}
+            aria-label={`Responsible Colleague for ${task.text}`}
         >
           <option value="na">N/A</option>
           {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
@@ -1600,7 +1600,7 @@ export default function Dashboard() {
     createDirectReportMut.mutate({ name, sortOrder: directReports.length }, {
       onSuccess: () => {
         setNewDirectReportName("");
-        toast.success(`Added ${name} to Direct Reports.`);
+        toast.success(`Added ${name} as a Responsible Colleague.`);
       },
     });
   }, [newDirectReportName, createDirectReportMut, directReports.length]);
@@ -2041,10 +2041,10 @@ export default function Dashboard() {
               style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
               value={directReportFilter}
               onChange={(event) => setDirectReportFilter(event.target.value === "all" || event.target.value === "na" ? event.target.value : Number(event.target.value))}
-              aria-label="Accountable Direct Report filter"
+              aria-label="Responsible Colleague filter"
             >
-              <option value="all">All Direct Reports</option>
-              <option value="na">Accountable: N/A</option>
+              <option value="all">All Responsible Colleagues</option>
+              <option value="na">Responsible Colleague: N/A</option>
               {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
             </select>
             <label
@@ -2451,10 +2451,10 @@ export default function Dashboard() {
             </SortableContext>
           )}
 
-          <section aria-label="Direct Reports manager" className="mt-6 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+          <section aria-label="Responsible Colleagues manager" className="mt-6 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
             <div className="mb-2">
-              <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Direct Reports</h2>
-              <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Maintain the people available in each task’s Accountable dropdown. N/A remains available for every task.</p>
+              <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Responsible Colleagues</h2>
+              <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>Maintain the people available in each task’s Responsible Colleague dropdown. N/A remains available for every task.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <input
@@ -2463,11 +2463,11 @@ export default function Dashboard() {
                 value={newDirectReportName}
                 onChange={(event) => setNewDirectReportName(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") handleAddDirectReport(); }}
-                placeholder="Add Direct Report…"
-                aria-label="New Direct Report name"
+                placeholder="Add Responsible Colleague…"
+                aria-label="New Responsible Colleague name"
               />
               <button className="rounded-lg border px-3 py-2 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={handleAddDirectReport}>
-                Add Direct Report
+                Add Responsible Colleague
               </button>
             </div>
             {directReports.length > 0 ? (
@@ -2485,7 +2485,7 @@ export default function Dashboard() {
                           event.target.value = name;
                           if (name !== report.name) updateDirectReportMut.mutate({ id: report.id, name });
                         }}
-                        aria-label={`Direct Report ${report.name}`}
+                        aria-label={`Responsible Colleague ${report.name}`}
                       />
                       <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{assignedCount} task{assignedCount === 1 ? "" : "s"}</span>
                       <button className="flex h-6 w-6 items-center justify-center rounded-full border-none bg-transparent" style={{ color: "var(--text-muted)" }} type="button" title={`Delete ${report.name}`} aria-label={`Delete ${report.name}`} onClick={() => handleDeleteDirectReport(report)}>
@@ -2496,7 +2496,7 @@ export default function Dashboard() {
                 })}
               </div>
             ) : (
-              <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Direct Reports yet. Tasks currently use N/A until you add someone.</p>
+              <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Responsible Colleagues yet. Tasks currently use N/A until you add someone.</p>
             )}
           </section>
 
