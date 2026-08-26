@@ -389,3 +389,9 @@
 - [x] Add a user-controlled toggle to hide or restore category, Manage categories, and priority controls for more task-list space
 - [x] Add regression coverage for category-list rendering, compact controls, and controls visibility toggling
 - [x] Build and submit the corrective native update to TestFlight
+
+## iPhone Manage Categories List Rendering Regression
+- [x] Replace the empty native category-management sheet list with a reliable on-screen category-row implementation
+- [x] Preserve category reordering, edit, delete, and Done controls in the corrected sheet
+- [x] Add a device-sized regression test proving management rows render when dashboard categories exist
+- [x] Build and submit the corrective native update to TestFlight

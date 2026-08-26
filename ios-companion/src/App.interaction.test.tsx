@@ -148,13 +148,11 @@ describe("restored iOS companion interactions", () => {
     expect(alertMock).toHaveBeenLastCalledWith("Delete category and its tasks?", expect.stringContaining("Planning"), expect.any(Array));
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage and reorder categories")!);
-    const draggableCategories = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
-    expect(root.findAll((node) => String(node.type) === "ScrollView")).toHaveLength(0);
-    expect(draggableCategories.props.style).toMatchObject({ flex: 1, minHeight: 0 });
-    expect(draggableCategories.props.showsVerticalScrollIndicator).toBe(true);
-    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Drag category URGENT")).toBeTruthy();
-    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Drag category Planning")).toBeTruthy();
-    await act(async () => { draggableCategories.props.onDragEnd({ data: [{ id: 2, name: "Planning", sortOrder: 1 }, { id: 1, name: "URGENT", sortOrder: 0 }] }); await Promise.resolve(); });
+    const managementScroll = root.findAll((node) => String(node.type) === "ScrollView")[0]!;
+    expect(managementScroll.props.showsVerticalScrollIndicator).toBe(true);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("URGENT"))).not.toHaveLength(0);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Planning"))).not.toHaveLength(0);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move category Planning up")!);
     expect(api.reorderCategoriesRemote).toHaveBeenCalledWith([{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }]);
   });
 
@@ -289,8 +287,7 @@ describe("restored iOS companion interactions", () => {
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Manage categories")!);
-    const draggableCategories = root.findAll((node) => String(node.type) === "DraggableFlatList")[0]!;
-    await act(async () => { draggableCategories.props.onDragEnd({ data: [{ id: 2, name: "Planning", sortOrder: 1 }, { id: 1, name: "URGENT", sortOrder: 0 }] }); await Promise.resolve(); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Move category Planning up")!);
     expect(api.reorderCategoriesRemote).toHaveBeenCalledWith([{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }]);
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Delete category Planning")!);
