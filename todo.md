@@ -407,3 +407,11 @@
 - [x] Keep To-Do on one line while positioning Select, Order, and Add to the right
 - [x] Add narrow-iPhone regression coverage for the unwrapped header composition
 - [x] Build and submit the corrected native update to TestFlight
+
+## Complete Native Task Setup
+- [x] Show Responsible Colleague selection while adding a new task
+- [x] Show priority selection while adding a new task
+- [x] Show due-date selection while adding a new task
+- [x] Preserve the selected setup details when the new task is saved, including offline queued creation
+- [x] Add native regression coverage for configured task creation
+- [ ] Build and submit the improved native task-creation flow to TestFlight

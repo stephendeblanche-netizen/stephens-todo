@@ -2,7 +2,7 @@
   "expo": {
     "name": "Stephen's To-Do",
     "slug": "stephens-todo-ios",
-    "version": "1.7.8",
+    "version": "1.7.9",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "stephenstodo",

@@ -7,6 +7,10 @@ const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), creat
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
+vi.mock("@react-native-community/datetimepicker", async () => {
+  const ReactModule = await import("react");
+  return { default: (props: any) => ReactModule.createElement("DateTimePicker", props) };
+});
 vi.mock("react-native-gesture-handler", async () => {
   const ReactModule = await import("react");
   return { GestureHandlerRootView: ({ children, ...props }: any) => ReactModule.createElement("GestureHandlerRootView", props, children), Swipeable: ({ children, renderRightActions, ...props }: any) => ReactModule.createElement("Swipeable", props, children, renderRightActions?.()) };
@@ -84,6 +88,27 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, text: "Create from iPhone", priority: "medium" }));
     expect(api.getDashboard.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("creates a task with its selected Responsible Colleague, priority, due date, and repeat pattern", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+    const dueDate = new Date(2026, 8, 15);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Set new task priority high")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ava to new task")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Set new task repeat weekly")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose due date for new task")!);
+    const picker = root.findAll((node) => String(node.type) === "DateTimePicker")[0]!;
+    await act(async () => { picker.props.onChange({}, dueDate); });
+    const newTaskInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.placeholder === "What needs doing?")[0]!;
+    await act(async () => { newTaskInput.props.onChangeText("Configured task"); });
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
+
+    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ text: "Configured task", priority: "high", accountableDirectReportId: 4, recurrence: "weekly", dueAt: new Date(2026, 8, 15).getTime() }));
   });
 
   it("keeps workspace and title labels unwrapped with matching right-aligned header actions", async () => {

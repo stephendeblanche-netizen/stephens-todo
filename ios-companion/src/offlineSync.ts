@@ -20,10 +20,10 @@ export function addTemporaryTask(dashboard: DashboardPayload, input: TaskCreateI
     note: "",
     done: false,
     sortOrder: input.sortOrder,
-    dueAt: null,
+    dueAt: input.dueAt ?? null,
     priority: input.priority,
-    recurrence: "none",
-    accountableDirectReportId: null,
+    recurrence: input.recurrence ?? "none",
+    accountableDirectReportId: input.accountableDirectReportId ?? null,
   };
   return { ...dashboard, syncedAt: Date.now(), tasks: [...dashboard.tasks, temporaryTask] };
 }

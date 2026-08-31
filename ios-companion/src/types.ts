@@ -9,7 +9,7 @@ export type Task = {
 };
 export type DashboardPayload = { categories: Category[]; tasks: Task[]; directReports: DirectReport[]; syncedAt: number };
 export type TaskPatch = Partial<Pick<Task, "done" | "note" | "priority" | "accountableDirectReportId">>;
-export type TaskCreateInput = { categoryId: number; parentId?: number; text: string; sortOrder: number; priority: Priority; mobileClientMutationId?: string };
+export type TaskCreateInput = { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority: Priority; recurrence?: Recurrence; accountableDirectReportId?: number | null; mobileClientMutationId?: string };
 export type QueuedTaskMutation =
   | { id: string; type: "patch"; taskId: number; patch: TaskPatch; createdAt: number }
   | { id: string; type: "create"; temporaryTaskId: number; input: TaskCreateInput; createdAt: number };
