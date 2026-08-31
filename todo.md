@@ -414,4 +414,4 @@
 - [x] Show due-date selection while adding a new task
 - [x] Preserve the selected setup details when the new task is saved, including offline queued creation
 - [x] Add native regression coverage for configured task creation
-- [ ] Build and submit the improved native task-creation flow to TestFlight
+- [x] Build and submit the improved native task-creation flow to TestFlight
