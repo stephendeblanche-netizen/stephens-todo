@@ -300,6 +300,30 @@ describe("restored iOS companion interactions", () => {
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Filter priority high")).toBeTruthy();
   });
 
+  it("filters the native task list by an individual Responsible Colleague, N/A, or all colleagues", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [...dashboard.tasks, { ...dashboard.tasks[0], id: 10, text: "Ava work item", accountableDirectReportId: 4, sortOrder: 1 }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose Responsible Colleague task filter")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter task list by Responsible Colleague Ava")!);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Ava work item"))).not.toHaveLength(0);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Prepare brief"))).toHaveLength(0);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose Responsible Colleague task filter")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter task list by unassigned tasks")!);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Prepare brief"))).not.toHaveLength(0);
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Choose Responsible Colleague task filter")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Filter task list by all Responsible Colleagues")!);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Ava work item"))).not.toHaveLength(0);
+    expect(root.findAll((node) => String(node.type) === "Text" && node.children.includes("Prepare brief"))).not.toHaveLength(0);
+  });
+
   it("edits colours, protects delete actions, and persists category and nested sub-category drag order", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,

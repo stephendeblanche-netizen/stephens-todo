@@ -415,3 +415,9 @@
 - [x] Preserve the selected setup details when the new task is saved, including offline queued creation
 - [x] Add native regression coverage for configured task creation
 - [x] Build and submit the improved native task-creation flow to TestFlight
+
+## Native Responsible Colleague Task Filter
+- [x] Add an individual Responsible Colleague filter to the iPhone and iPad task list
+- [x] Support All colleagues and N/A alongside individual colleague selections
+- [x] Add native regression coverage for colleague-filtered task lists
+- [x] Build and submit the colleague-filter update to TestFlight
