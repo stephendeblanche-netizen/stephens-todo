@@ -721,6 +721,18 @@ function TaskItem({
         {/* Task schedule and priority editor */}
         {dueOpen && (
           <div id={`task-detail-panel-${node.id}`} role="region" aria-label={`Task details for ${node.text}`} className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+            <div className="basis-full flex items-center justify-between gap-2 border-b pb-1" style={{ borderColor: "var(--border-color)" }}>
+              <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Task details</span>
+              <button
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold transition-colors"
+                style={{ color: "var(--slot-1)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+                type="button"
+                onClick={() => setDueOpen(false)}
+                aria-label={`Minimise details for ${node.text}`}
+              >
+                <ChevronDown size={12} /> Minimise details
+              </button>
+            </div>
             <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Due</label>
             <input
               type="date"

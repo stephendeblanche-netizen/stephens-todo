@@ -466,7 +466,7 @@ describe("Dashboard focused priority views", () => {
     await user.tab();
     expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, note: "Updated through priority details" });
 
-    await user.click(flagButtons[0]!);
+    await user.click(screen.getByRole("button", { name: "Minimise details for Urgent high today" }));
     expect(screen.queryByRole("region", { name: "Task details for Urgent high today" })).toBeNull();
   });
 

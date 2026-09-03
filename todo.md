@@ -421,3 +421,9 @@
 - [x] Support All colleagues and N/A alongside individual colleague selections
 - [x] Add native regression coverage for colleague-filtered task lists
 - [x] Build and submit the colleague-filter update to TestFlight
+
+## Browser Task Detail Collapse
+- [x] Add a visible control that minimises an expanded browser task’s details
+- [x] Ensure newly created and edited tasks can return to their compact row state
+- [x] Add browser regression coverage for task-detail expansion and collapse
+- [x] Publish the browser task-detail usability improvement
