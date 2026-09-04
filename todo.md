@@ -436,12 +436,12 @@
 ## Corporate Outlook Connection Approval
 - [x] Receive Microsoft Entra application registration and tenant approval from IT
 - [x] Collect the tenant ID, application client ID, and secure client credential after IT approval
-- [ ] Configure the approved Outlook Calendar and selected-email connection in Stephen’s To-Do
+- [x] Configure the approved Outlook Calendar and selected-email connection in Stephen’s To-Do
 
 ## Microsoft Entra Registration Details Received
 - [x] Verify the supplied tenant and application client identifiers against IT’s callback and consent configuration
 - [x] Securely collect the approved client credential after registration verification
-- [ ] Implement, test, and publish the Outlook Calendar and selected-email connection
+- [x] Implement, test, and publish the Outlook Calendar and selected-email connection
 
 ## Microsoft Client Credential Ready
 - [x] Receive the approved Microsoft Entra client secret through protected project settings
@@ -451,4 +451,17 @@
 - [x] Add encrypted delegated-token persistence, CSRF-protected Microsoft OAuth routes, and owner-only Graph endpoints
 - [x] Add Outlook Calendar viewing, Private/Available due-task event synchronisation, and explicit selected-email task import
 - [x] Add browser and server regression coverage for the protected connection panel and task-event payload
-- [ ] Complete a live corporate Microsoft authorisation from the published dashboard
+- [x] Complete a live corporate Microsoft authorisation from the published dashboard
+
+## Dashboard Owner Sign-In Challenge
+- [x] Complete the dashboard-owner sign-in in the user’s own browser after its human-verification challenge
+- [x] Continue the approved Outlook authorisation once the owner dashboard session is active
+
+## Corporate Outlook Consent Block
+- [x] Obtain administrator consent for the registered single-tenant Microsoft Entra application
+- [x] Resume and verify the Outlook connection after IT confirms approval
+
+## Corporate Outlook Connection Complete
+- [x] Verify the active Microsoft connection, account identity, and Outlook calendar read access
+- [x] Verify the selected-email task-import list is available without automatic mail import
+- [x] Confirm practical dashboard usage for calendar viewing and private/available task-event syncing
