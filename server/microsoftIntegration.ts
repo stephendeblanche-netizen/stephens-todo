@@ -14,7 +14,7 @@ import {
 import { ENV } from "./_core/env";
 
 export const MICROSOFT_REDIRECT_URI = "https://stephtodo-hbslvcim.manus.space/api/integrations/microsoft/callback";
-export const MICROSOFT_SCOPES = ["openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "Mail.Read"];
+export const MICROSOFT_SCOPES = ["openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "Mail.Read", "Mail.Send"];
 
 type StoredTokens = {
   accessToken: string;
@@ -248,6 +248,37 @@ export async function listMicrosoftMessages(userId: number, limit: number) {
     webLink: message.webLink ?? null,
     isRead: Boolean(message.isRead),
   }] : []);
+}
+
+type OutlookEmailInput = {
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+};
+
+export function buildOutlookEmailPayload(input: OutlookEmailInput) {
+  const recipients = (addresses: string[]) => addresses.map((address) => ({ emailAddress: { address } }));
+  return {
+    message: {
+      subject: input.subject,
+      body: { contentType: "Text", content: input.body },
+      toRecipients: recipients(input.to),
+      ...(input.cc.length > 0 ? { ccRecipients: recipients(input.cc) } : {}),
+    },
+    saveToSentItems: true,
+  };
+}
+
+export async function sendMicrosoftEmail(userId: number, input: OutlookEmailInput) {
+  const accessToken = await getAccessToken(userId);
+  const response = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify(buildOutlookEmailPayload(input)),
+  });
+  if (!response.ok) throw new Error(`Microsoft Graph could not send the email (${response.status}).`);
+  return { accepted: response.status === 202 };
 }
 
 export async function importMicrosoftMessageAsTask(userId: number, messageId: string, categoryId: number) {

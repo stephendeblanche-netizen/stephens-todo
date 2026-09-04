@@ -471,3 +471,10 @@
 - [x] Place a clear Outlook sync action where it is visible in the browser task list
 - [x] Add regression coverage for the corrected task-sync control
 - [x] Publish the corrected task-sync control
+
+## Corporate Outlook Email Sending
+- [x] Add the least-privilege delegated Microsoft Graph permission required to send user-composed messages
+- [x] Build a protected Outlook email composer with recipient, subject, message, review, and explicit send confirmation
+- [x] Ensure no email is sent during drafting, validation, or automated tests
+- [x] Add regression coverage for the email composer and confirmed-send safeguards
+- [ ] Publish the email workflow and complete Microsoft re-consent

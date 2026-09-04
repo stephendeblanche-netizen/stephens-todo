@@ -33,6 +33,7 @@ const fixture = vi.hoisted(() => ({
   createDirectReportMutate: vi.fn(),
   updateEmailSettingsMutate: vi.fn(),
   syncOutlookTaskMutate: vi.fn(),
+  sendOutlookEmailMutate: vi.fn(),
   microsoftConnected: false,
   emailSettings: { id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "cron-1", enabled: true, lastSentAt: null },
 }));
@@ -81,6 +82,7 @@ vi.mock("@/lib/trpc", () => ({
       inbox: { useQuery: () => ({ data: [], isLoading: false }) },
       syncTaskEvent: { useMutation: () => ({ mutate: fixture.syncOutlookTaskMutate, isPending: false }) },
       importEmailAsTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      sendEmail: { useMutation: () => ({ mutate: fixture.sendOutlookEmailMutate, isPending: false }) },
       disconnect: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
     data: {
@@ -118,6 +120,7 @@ describe("Dashboard focused priority views", () => {
     fixture.createDirectReportMutate.mockReset();
     fixture.updateEmailSettingsMutate.mockReset();
     fixture.syncOutlookTaskMutate.mockReset();
+    fixture.sendOutlookEmailMutate.mockReset();
     fixture.microsoftConnected = false;
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
@@ -480,6 +483,25 @@ describe("Dashboard focused priority views", () => {
     expect(screen.getByLabelText("Task to sync to Outlook Calendar")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Sync selected task to Outlook" }));
     expect(fixture.syncOutlookTaskMutate).toHaveBeenCalledWith({ taskId: 1 });
+  });
+
+  it("requires review and explicit confirmation before sending a composed Outlook email", async () => {
+    const user = userEvent.setup();
+    fixture.microsoftConnected = true;
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("button", { name: /compose outlook email/i }));
+    await user.type(screen.getByLabelText("Outlook email recipients"), "colleague@example.com");
+    await user.type(screen.getByLabelText("Outlook email subject"), "Project update");
+    await user.type(screen.getByLabelText("Outlook email message"), "The task is complete.");
+    expect(fixture.sendOutlookEmailMutate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Review email" }));
+    expect(screen.getByRole("region", { name: "Review Outlook email" })).not.toBeNull();
+    expect(fixture.sendOutlookEmailMutate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Send email" }));
+    expect(fixture.sendOutlookEmailMutate).toHaveBeenCalledWith({
+      to: ["colleague@example.com"], cc: [], subject: "Project update", body: "The task is complete.", confirmed: true,
+    });
   });
 
   it("toggles a task detail panel below the row when the priority flag is clicked", async () => {

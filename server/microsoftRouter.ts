@@ -5,6 +5,7 @@ import {
   importMicrosoftMessageAsTask,
   listMicrosoftCalendarEvents,
   listMicrosoftMessages,
+  sendMicrosoftEmail,
   syncTaskToMicrosoftEvent,
 } from "./microsoftIntegration";
 import { deleteMicrosoftConnection } from "./db";
@@ -30,6 +31,15 @@ export const microsoftRouter = router({
   importEmailAsTask: adminProcedure
     .input(z.object({ messageId: z.string().min(1).max(255), categoryId: z.number().int() }))
     .mutation(async ({ ctx, input }) => importMicrosoftMessageAsTask(ctx.user.id, input.messageId, input.categoryId)),
+  sendEmail: adminProcedure
+    .input(z.object({
+      to: z.array(z.string().trim().email().max(320)).min(1).max(20),
+      cc: z.array(z.string().trim().email().max(320)).max(20).default([]),
+      subject: z.string().trim().min(1).max(255),
+      body: z.string().trim().min(1).max(10_000),
+      confirmed: z.literal(true),
+    }))
+    .mutation(async ({ ctx, input }) => sendMicrosoftEmail(ctx.user.id, input)),
   disconnect: adminProcedure.mutation(async ({ ctx }) => {
     await deleteMicrosoftConnection(ctx.user.id);
     return { success: true };

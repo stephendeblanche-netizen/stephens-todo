@@ -64,6 +64,7 @@ import {
   Mail,
   Clock3,
   Save,
+  Send,
   X,
 } from "lucide-react";
 import {
@@ -1349,6 +1350,12 @@ export default function Dashboard() {
   const [showOutlookInbox, setShowOutlookInbox] = useState(false);
   const [outlookImportCategoryId, setOutlookImportCategoryId] = useState<number | null>(null);
   const [outlookSyncTaskId, setOutlookSyncTaskId] = useState<number | null>(null);
+  const [showOutlookComposer, setShowOutlookComposer] = useState(false);
+  const [showOutlookSendReview, setShowOutlookSendReview] = useState(false);
+  const [outlookEmailTo, setOutlookEmailTo] = useState("");
+  const [outlookEmailCc, setOutlookEmailCc] = useState("");
+  const [outlookEmailSubject, setOutlookEmailSubject] = useState("");
+  const [outlookEmailBody, setOutlookEmailBody] = useState("");
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1404,6 +1411,18 @@ export default function Dashboard() {
       toast.success("Outlook has been disconnected.");
     },
     onError: (error) => toast.error(error.message || "Could not disconnect Outlook."),
+  });
+  const sendOutlookEmailMut = trpc.microsoft.sendEmail.useMutation({
+    onSuccess: () => {
+      setOutlookEmailTo("");
+      setOutlookEmailCc("");
+      setOutlookEmailSubject("");
+      setOutlookEmailBody("");
+      setShowOutlookSendReview(false);
+      setShowOutlookComposer(false);
+      toast.success("Outlook accepted your email for delivery.");
+    },
+    onError: (error) => toast.error(error.message || "Outlook could not send the email."),
   });
 
   const effectiveActiveCats = useMemo(() => {
@@ -1486,6 +1505,10 @@ export default function Dashboard() {
   );
   const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
   const outlookDueTasks = useMemo(() => tasksData.filter((task) => task.dueAt !== null), [tasksData]);
+  const outlookComposeRecipients = useMemo(() => ({
+    to: outlookEmailTo.split(/[;,]/).map((address) => address.trim()).filter(Boolean),
+    cc: outlookEmailCc.split(/[;,]/).map((address) => address.trim()).filter(Boolean),
+  }), [outlookEmailTo, outlookEmailCc]);
 
   useEffect(() => {
     const activeIds = new Set(tasksData.map((task) => task.id));
@@ -2279,8 +2302,30 @@ export default function Dashboard() {
                 <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Connected as <strong style={{ color: "var(--text-primary)" }}>{microsoftStatusQuery.data.email ?? microsoftStatusQuery.data.displayName ?? "your Microsoft account"}</strong>.</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--slot-1)" }} type="button" onClick={() => setShowOutlookInbox((shown) => !shown)}>{showOutlookInbox ? "Hide selected-email list" : "Select email to add as task"}</button>
+                  <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "white", background: "var(--slot-1)", borderColor: "var(--slot-1)" }} type="button" onClick={() => { setShowOutlookComposer((shown) => !shown); setShowOutlookSendReview(false); }}><Send size={12} /> {showOutlookComposer ? "Close email composer" : "Compose Outlook email"}</button>
                   <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit] disabled:opacity-60" style={{ color: "var(--status-critical)", background: "var(--page-plane)", borderColor: "var(--status-critical)" }} type="button" disabled={disconnectOutlookMut.isPending} onClick={() => disconnectOutlookMut.mutate()}>{disconnectOutlookMut.isPending ? "Disconnecting…" : "Disconnect Outlook"}</button>
                 </div>
+                {showOutlookComposer && (
+                  <div className="mt-3 rounded-lg border p-3" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                    <h3 className="m-0 text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>Compose Outlook email</h3>
+                    <p className="m-0 mt-0.5 text-[10px]" style={{ color: "var(--text-secondary)" }}>Nothing is sent until you review and explicitly confirm the message.</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>To <input aria-label="Outlook email recipients" className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookEmailTo} onChange={(event) => setOutlookEmailTo(event.target.value)} placeholder="name@company.com; another@company.com" /></label>
+                      <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Cc <span className="font-normal">(optional)</span><input aria-label="Outlook email cc recipients" className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookEmailCc} onChange={(event) => setOutlookEmailCc(event.target.value)} placeholder="name@company.com" /></label>
+                    </div>
+                    <label className="mt-2 block text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Subject <input aria-label="Outlook email subject" className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookEmailSubject} onChange={(event) => setOutlookEmailSubject(event.target.value)} /></label>
+                    <label className="mt-2 block text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Message <textarea aria-label="Outlook email message" className="mt-1 min-h-28 w-full resize-y rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookEmailBody} onChange={(event) => setOutlookEmailBody(event.target.value)} /></label>
+                    {!showOutlookSendReview ? <button className="mt-2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold disabled:opacity-60" style={{ color: "white", background: "var(--slot-1)", borderColor: "var(--slot-1)" }} type="button" disabled={outlookComposeRecipients.to.length === 0 || !outlookEmailSubject.trim() || !outlookEmailBody.trim()} onClick={() => setShowOutlookSendReview(true)}>Review email</button> : (
+                      <div role="region" aria-label="Review Outlook email" className="mt-3 rounded-md border p-2.5" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+                        <p className="m-0 text-[11px]" style={{ color: "var(--text-primary)" }}><strong>To:</strong> {outlookComposeRecipients.to.join(", ")}</p>
+                        {outlookComposeRecipients.cc.length > 0 && <p className="m-0 mt-1 text-[11px]" style={{ color: "var(--text-primary)" }}><strong>Cc:</strong> {outlookComposeRecipients.cc.join(", ")}</p>}
+                        <p className="m-0 mt-1 text-[11px]" style={{ color: "var(--text-primary)" }}><strong>Subject:</strong> {outlookEmailSubject}</p>
+                        <p className="mb-0 mt-2 whitespace-pre-wrap text-[11px]" style={{ color: "var(--text-secondary)" }}>{outlookEmailBody}</p>
+                        <div className="mt-3 flex flex-wrap gap-2"><button className="rounded-md border px-2.5 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }} type="button" onClick={() => setShowOutlookSendReview(false)}>Edit email</button><button className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60" style={{ color: "white", background: "var(--status-critical)", borderColor: "var(--status-critical)" }} type="button" disabled={sendOutlookEmailMut.isPending} onClick={() => sendOutlookEmailMut.mutate({ ...outlookComposeRecipients, subject: outlookEmailSubject, body: outlookEmailBody, confirmed: true })}><Send size={11} /> {sendOutlookEmailMut.isPending ? "Sending…" : "Send email"}</button></div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {outlookDueTasks.length > 0 ? (
                   <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border p-2.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
                     <label className="min-w-[220px] flex-1 text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
