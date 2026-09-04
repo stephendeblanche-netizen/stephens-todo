@@ -465,3 +465,9 @@
 - [x] Verify the active Microsoft connection, account identity, and Outlook calendar read access
 - [x] Verify the selected-email task-import list is available without automatic mail import
 - [x] Confirm practical dashboard usage for calendar viewing and private/available task-event syncing
+
+## Browser Outlook Sync Action Visibility
+- [x] Verify the live task-sync action visibility for the connected account and due-dated tasks
+- [x] Place a clear Outlook sync action where it is visible in the browser task list
+- [x] Add regression coverage for the corrected task-sync control
+- [x] Publish the corrected task-sync control

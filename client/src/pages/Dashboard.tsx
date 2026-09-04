@@ -1348,6 +1348,7 @@ export default function Dashboard() {
   const [emailDeliveryTime, setEmailDeliveryTime] = useState("19:00");
   const [showOutlookInbox, setShowOutlookInbox] = useState(false);
   const [outlookImportCategoryId, setOutlookImportCategoryId] = useState<number | null>(null);
+  const [outlookSyncTaskId, setOutlookSyncTaskId] = useState<number | null>(null);
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1484,6 +1485,7 @@ export default function Dashboard() {
     [tasksData, activeSavedCriteria, directReportFilter],
   );
   const selectedCalendarTasks = calendarTaskGroups.get(selectedCalendarDate) ?? [];
+  const outlookDueTasks = useMemo(() => tasksData.filter((task) => task.dueAt !== null), [tasksData]);
 
   useEffect(() => {
     const activeIds = new Set(tasksData.map((task) => task.id));
@@ -1502,6 +1504,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (outlookImportCategoryId === null && categoriesData[0]) setOutlookImportCategoryId(categoriesData[0].id);
   }, [categoriesData, outlookImportCategoryId]);
+
+  useEffect(() => {
+    if (outlookDueTasks.length === 0) {
+      if (outlookSyncTaskId !== null) setOutlookSyncTaskId(null);
+      return;
+    }
+    if (!outlookDueTasks.some((task) => task.id === outlookSyncTaskId)) setOutlookSyncTaskId(outlookDueTasks[0]!.id);
+  }, [outlookDueTasks, outlookSyncTaskId]);
 
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
@@ -2271,6 +2281,22 @@ export default function Dashboard() {
                   <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--slot-1)" }} type="button" onClick={() => setShowOutlookInbox((shown) => !shown)}>{showOutlookInbox ? "Hide selected-email list" : "Select email to add as task"}</button>
                   <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit] disabled:opacity-60" style={{ color: "var(--status-critical)", background: "var(--page-plane)", borderColor: "var(--status-critical)" }} type="button" disabled={disconnectOutlookMut.isPending} onClick={() => disconnectOutlookMut.mutate()}>{disconnectOutlookMut.isPending ? "Disconnecting…" : "Disconnect Outlook"}</button>
                 </div>
+                {outlookDueTasks.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border p-2.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                    <label className="min-w-[220px] flex-1 text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                      Task to sync to Outlook Calendar
+                      <select aria-label="Task to sync to Outlook Calendar" className="mt-1 w-full rounded-md border px-2 py-1.5 text-[11px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookSyncTaskId ?? ""} onChange={(event) => setOutlookSyncTaskId(Number(event.target.value))}>
+                        {outlookDueTasks.map((task) => <option key={task.id} value={task.id}>{task.text} · due {toLocalDateInputValue(task.dueAt)}</option>)}
+                      </select>
+                    </label>
+                    <button className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold disabled:opacity-60" style={{ color: "white", background: "var(--slot-1)", borderColor: "var(--slot-1)" }} type="button" disabled={!outlookSyncTaskId || syncOutlookTaskMut.isPending} onClick={() => outlookSyncTaskId && syncOutlookTaskMut.mutate({ taskId: outlookSyncTaskId })} aria-label="Sync selected task to Outlook">
+                      <CalendarDays size={12} /> {syncOutlookTaskMut.isPending ? "Syncing…" : "Sync task to Outlook"}
+                    </button>
+                    <p className="m-0 basis-full text-[10px]" style={{ color: "var(--text-muted)" }}>Creates or updates an all-day event marked Private and Available.</p>
+                  </div>
+                ) : (
+                  <p className="m-0 mt-3 rounded-lg border px-3 py-2 text-[11px]" style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}>Set a due date on a task before syncing it to Outlook Calendar.</p>
+                )}
                 {showOutlookInbox && (
                   <div className="mt-3 rounded-lg border p-2.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

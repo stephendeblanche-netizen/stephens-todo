@@ -32,6 +32,8 @@ const fixture = vi.hoisted(() => ({
   reorderTaskMutate: vi.fn(),
   createDirectReportMutate: vi.fn(),
   updateEmailSettingsMutate: vi.fn(),
+  syncOutlookTaskMutate: vi.fn(),
+  microsoftConnected: false,
   emailSettings: { id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "cron-1", enabled: true, lastSentAt: null },
 }));
 
@@ -74,10 +76,10 @@ vi.mock("@/lib/trpc", () => ({
       update: { useMutation: () => ({ mutate: fixture.updateEmailSettingsMutate, isPending: false }) },
     },
     microsoft: {
-      status: { useQuery: () => ({ data: { connected: false, email: null, displayName: null, expiresAt: null }, isLoading: false }) },
+      status: { useQuery: () => ({ data: { connected: fixture.microsoftConnected, email: fixture.microsoftConnected ? "StephenD@nutun.com" : null, displayName: fixture.microsoftConnected ? "Stephen De Blanche" : null, expiresAt: null }, isLoading: false }) },
       calendarEvents: { useQuery: () => ({ data: [], isLoading: false }) },
       inbox: { useQuery: () => ({ data: [], isLoading: false }) },
-      syncTaskEvent: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      syncTaskEvent: { useMutation: () => ({ mutate: fixture.syncOutlookTaskMutate, isPending: false }) },
       importEmailAsTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       disconnect: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
@@ -115,6 +117,8 @@ describe("Dashboard focused priority views", () => {
     fixture.reorderTaskMutate.mockReset();
     fixture.createDirectReportMutate.mockReset();
     fixture.updateEmailSettingsMutate.mockReset();
+    fixture.syncOutlookTaskMutate.mockReset();
+    fixture.microsoftConnected = false;
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
     ];
@@ -466,6 +470,16 @@ describe("Dashboard focused priority views", () => {
     expect(screen.getByRole("region", { name: "Outlook Calendar and email" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Connect Outlook" })).not.toBeNull();
     expect(screen.getByText(/private, delegated integration/i)).not.toBeNull();
+  });
+
+  it("keeps a due-task Outlook sync control visible in the connected dashboard card", async () => {
+    const user = userEvent.setup();
+    fixture.microsoftConnected = true;
+    renderDashboard("all");
+
+    expect(screen.getByLabelText("Task to sync to Outlook Calendar")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "Sync selected task to Outlook" }));
+    expect(fixture.syncOutlookTaskMutate).toHaveBeenCalledWith({ taskId: 1 });
   });
 
   it("toggles a task detail panel below the row when the priority flag is clicked", async () => {
