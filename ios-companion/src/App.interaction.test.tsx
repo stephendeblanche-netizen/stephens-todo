@@ -3,6 +3,7 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from "rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const alertMock = vi.hoisted(() => vi.fn());
+const linking = vi.hoisted(() => ({ canOpenURL: vi.fn(), openURL: vi.fn() }));
 const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn(), deleteTaskRemote: vi.fn(), createCategoryRemote: vi.fn(), createDirectReportRemote: vi.fn(), updateCategoryRemote: vi.fn(), deleteCategoryRemote: vi.fn(), reorderCategoriesRemote: vi.fn(), updateDirectReportRemote: vi.fn(), deleteDirectReportRemote: vi.fn(), reorderTasksRemote: vi.fn() }));
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
@@ -25,7 +26,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: stub("ActivityIndicator"), Alert: { alert: alertMock }, FlatList: ({ data, renderItem, ListEmptyComponent, ...props }: any) => ReactModule.createElement("FlatList", props, data.length ? data.map((item: any, index: number) => renderItem({ item, index })) : ListEmptyComponent),
     Modal: ({ visible, children }: any) => visible ? ReactModule.createElement("Modal", null, children) : null,
-    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"), useWindowDimensions: () => ({ width: 375, height: 812, scale: 1, fontScale: 1 }),
+    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Linking: linking, Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"), useWindowDimensions: () => ({ width: 375, height: 812, scale: 1, fontScale: 1 }),
   };
 });
 
@@ -58,6 +59,8 @@ describe("restored iOS companion interactions", () => {
     api.updateDirectReportRemote.mockReset().mockResolvedValue({ success: true });
     api.deleteDirectReportRemote.mockReset().mockResolvedValue({ success: true });
     api.reorderTasksRemote.mockReset().mockResolvedValue({ success: true });
+    linking.canOpenURL.mockReset().mockResolvedValue(true);
+    linking.openURL.mockReset().mockResolvedValue(undefined);
     alertMock.mockReset();
   });
 
@@ -109,6 +112,24 @@ describe("restored iOS companion interactions", () => {
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
 
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ text: "Configured task", priority: "high", accountableDirectReportId: 4, recurrence: "weekly", dueAt: new Date(2026, 8, 15).getTime() }));
+  });
+
+  it("reviews a native corporate email and opens the email client only after explicit confirmation", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Compose corporate email")!);
+    const recipient = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Corporate email recipients")[0]!;
+    const subject = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Corporate email subject")[0]!;
+    const message = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Corporate email message")[0]!;
+    await act(async () => { recipient.props.onChangeText("colleague@example.com"); subject.props.onChangeText("Project update"); message.props.onChangeText("The task is complete."); });
+    expect(linking.openURL).not.toHaveBeenCalled();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Review corporate email")!);
+    expect(root.findAll((node) => node.props.accessibilityLabel === "Corporate email review").length).toBeGreaterThan(0);
+    expect(linking.openURL).not.toHaveBeenCalled();
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Open email app to send")!);
+    expect(linking.openURL).toHaveBeenCalledWith(expect.stringContaining("mailto:colleague%40example.com?subject=Project%20update"));
   });
 
   it("keeps workspace and title labels unwrapped with matching right-aligned header actions", async () => {

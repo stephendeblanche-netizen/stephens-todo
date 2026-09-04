@@ -5,8 +5,10 @@ import { resolve } from "node:path";
 
 const signingDir = "/home/ubuntu/ios-signing-assets";
 const sourcePackagePath =
+  process.env.IOS_SIGNING_SOURCE_PACKAGE_PATH ??
   "/home/ubuntu/upload/pasted_file_4SsC9T_stephens-todo-distribution.p12.pfx";
 const provisioningProfilePath =
+  process.env.IOS_SIGNING_PROVISIONING_PROFILE_PATH ??
   "/home/ubuntu/upload/pasted_file_qV7fbD_Stephens_ToDo_App_Store(3).mobileprovision";
 const sourcePackagePassword = process.env.IOS_DISTRIBUTION_P12_PASSWORD;
 

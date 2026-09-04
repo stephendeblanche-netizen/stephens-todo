@@ -478,3 +478,15 @@
 - [x] Ensure no email is sent during drafting, validation, or automated tests
 - [x] Add regression coverage for the email composer and confirmed-send safeguards
 - [ ] Publish the email workflow and complete Microsoft re-consent
+
+## Native Outlook Email Composer
+- [x] Add a confirmed native email-client handoff while direct Microsoft Graph sending remains subject to Mail.Send consent
+- [x] Add an iPhone and iPad corporate email composer with To, Cc, subject, message, review, and confirmation
+- [x] Ensure no native email is sent while drafting or reviewing
+- [x] Add native interaction regression coverage for confirmed-only email-client handoff
+- [x] Build and submit the native email composer to TestFlight
+
+## Native Corporate Email Handoff
+- [x] Add a review-first native email composer that opens the device’s configured corporate email client only after explicit confirmation
+- [x] Preserve recipient, Cc, subject, and message text in the handoff without storing email contents on the dashboard
+- [x] Add iPhone and iPad regression coverage for no-send drafting, review, and confirmed client handoff
