@@ -427,3 +427,28 @@
 - [x] Ensure newly created and edited tasks can return to their compact row state
 - [x] Add browser regression coverage for task-detail expansion and collapse
 - [x] Publish the browser task-detail usability improvement
+
+## Urgent Category Recovery
+- [x] Inspect the deletion state and available dashboard recovery sources for the Urgent category
+- [x] Restore the deleted Urgent category and its tasks only if a verified recovery source is available
+- [x] Verify the recovered data and document a safe prevention measure: retain the daily JSON dashboard snapshot emails for point-in-time recovery
+
+## Corporate Outlook Connection Approval
+- [x] Receive Microsoft Entra application registration and tenant approval from IT
+- [x] Collect the tenant ID, application client ID, and secure client credential after IT approval
+- [ ] Configure the approved Outlook Calendar and selected-email connection in Stephen’s To-Do
+
+## Microsoft Entra Registration Details Received
+- [x] Verify the supplied tenant and application client identifiers against IT’s callback and consent configuration
+- [x] Securely collect the approved client credential after registration verification
+- [ ] Implement, test, and publish the Outlook Calendar and selected-email connection
+
+## Microsoft Client Credential Ready
+- [x] Receive the approved Microsoft Entra client secret through protected project settings
+- [x] Validate the credential configuration without exposing the secret
+
+## Authorised Outlook Browser Integration
+- [x] Add encrypted delegated-token persistence, CSRF-protected Microsoft OAuth routes, and owner-only Graph endpoints
+- [x] Add Outlook Calendar viewing, Private/Available due-task event synchronisation, and explicit selected-email task import
+- [x] Add browser and server regression coverage for the protected connection panel and task-event payload
+- [ ] Complete a live corporate Microsoft authorisation from the published dashboard

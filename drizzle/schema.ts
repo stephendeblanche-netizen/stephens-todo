@@ -112,6 +112,53 @@ export const mobileReminderSchedules = mysqlTable("mobile_reminder_schedules", {
 
 export type MobileReminderSchedule = typeof mobileReminderSchedules.$inferSelect;
 
+// Delegated Microsoft 365 connection for the signed-in dashboard owner. OAuth
+// tokens are encrypted before persistence and never returned to the client.
+export const microsoftConnections = mysqlTable("microsoft_connections", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  tenantId: varchar("tenant_id", { length: 64 }).notNull(),
+  accountId: varchar("account_id", { length: 128 }).notNull(),
+  accountEmail: varchar("account_email", { length: 320 }),
+  displayName: varchar("display_name", { length: 255 }),
+  tokenCiphertext: text("token_ciphertext").notNull(),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("microsoft_connections_user_uidx").on(table.userId),
+]);
+
+export type MicrosoftConnection = typeof microsoftConnections.$inferSelect;
+
+// Links a task to its single Microsoft Outlook event so task updates replace
+// the existing private/free event rather than creating duplicate appointments.
+export const microsoftTaskEvents = mysqlTable("microsoft_task_events", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  taskId: int("task_id").notNull(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  webLink: text("web_link"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("microsoft_task_events_user_task_uidx").on(table.userId, table.taskId),
+]);
+
+// Records a user-selected Outlook message after it becomes a task, preventing
+// accidental duplicate task creation from the same email.
+export const microsoftEmailImports = mysqlTable("microsoft_email_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  messageId: varchar("message_id", { length: 255 }).notNull(),
+  taskId: int("task_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("microsoft_email_imports_user_message_uidx").on(table.userId, table.messageId),
+]);
+
+export type MicrosoftEmailImport = typeof microsoftEmailImports.$inferSelect;
+
 // Tasks table — supports unlimited nesting via parentId self-reference
 export const tasks = mysqlTable("tasks", {
   id: int("id").autoincrement().primaryKey(),

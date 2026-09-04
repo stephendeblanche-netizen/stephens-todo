@@ -910,9 +910,11 @@ interface TodayTaskRowProps {
   directReports: DirectReport[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
+  outlookConnected?: boolean;
+  onSyncToOutlook?: (taskId: number) => void;
 }
 
-function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: TodayTaskRowProps) {
+function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlookConnected = false, onSyncToOutlook }: TodayTaskRowProps) {
   const dueToday = isDueToday(task.dueAt);
   const isUrgent = category?.kind === "urgent";
   const [noteOpen, setNoteOpen] = useState(false);
@@ -1011,6 +1013,17 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete }: Tod
           <option value="na">N/A</option>
           {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
         </select>
+        {outlookConnected && task.dueAt && onSyncToOutlook && (
+          <button
+            className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
+            style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--slot-1)" }}
+            type="button"
+            onClick={() => onSyncToOutlook(task.id)}
+            aria-label={`Send ${task.text} to Outlook Calendar`}
+          >
+            <CalendarDays size={11} /> Outlook
+          </button>
+        )}
         <button
           className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
           style={{ color: task.note ? "var(--slot-1)" : "var(--text-muted)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
@@ -1305,6 +1318,7 @@ export default function Dashboard() {
   const { data: savedFilters = [] } = trpc.filters.list.useQuery();
   const { data: directReports = [] } = trpc.directReports.list.useQuery();
   const emailSettingsQuery = trpc.dashboardEmailSettings.get.useQuery(undefined, { enabled: canManageEmailSettings });
+  const microsoftStatusQuery = trpc.microsoft.status.useQuery(undefined, { enabled: canManageEmailSettings });
 
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -1332,6 +1346,8 @@ export default function Dashboard() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailDeliveryTime, setEmailDeliveryTime] = useState("19:00");
+  const [showOutlookInbox, setShowOutlookInbox] = useState(false);
+  const [outlookImportCategoryId, setOutlookImportCategoryId] = useState<number | null>(null);
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1366,6 +1382,27 @@ export default function Dashboard() {
       if (result.nextExecutionAt) toast.message(`Next run: ${new Date(result.nextExecutionAt).toLocaleString()}`);
     },
     onError: (error) => toast.error(error.message || "Could not update daily email settings."),
+  });
+  const syncOutlookTaskMut = trpc.microsoft.syncTaskEvent.useMutation({
+    onSuccess: (result) => toast.success(result.webLink ? "Outlook event saved." : "Outlook event saved as Private and Available."),
+    onError: (error) => toast.error(error.message || "Could not save the Outlook event."),
+  });
+  const importOutlookEmailMut = trpc.microsoft.importEmailAsTask.useMutation({
+    onSuccess: (result) => {
+      utils.tasks.listAll.invalidate();
+      toast.success(result.alreadyImported ? "That Outlook email has already been added as a task." : "Selected Outlook email added as a task.");
+    },
+    onError: (error) => toast.error(error.message || "Could not add that Outlook email as a task."),
+  });
+  const disconnectOutlookMut = trpc.microsoft.disconnect.useMutation({
+    onSuccess: () => {
+      utils.microsoft.status.invalidate();
+      utils.microsoft.calendarEvents.invalidate();
+      utils.microsoft.inbox.invalidate();
+      setShowOutlookInbox(false);
+      toast.success("Outlook has been disconnected.");
+    },
+    onError: (error) => toast.error(error.message || "Could not disconnect Outlook."),
   });
 
   const effectiveActiveCats = useMemo(() => {
@@ -1432,6 +1469,16 @@ export default function Dashboard() {
     [highPriorityTasks, directReportFilter],
   );
   const calendarDays = useMemo(() => calendarMonthDays(calendarMonth), [calendarMonth]);
+  const outlookCalendarRange = useMemo(() => ({
+    startAt: new Date(Date.UTC(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)).toISOString(),
+    endAt: new Date(Date.UTC(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1)).toISOString(),
+  }), [calendarMonth]);
+  const outlookCalendarQuery = trpc.microsoft.calendarEvents.useQuery(outlookCalendarRange, {
+    enabled: canManageEmailSettings && microsoftStatusQuery.data?.connected === true && activeView === "calendar",
+  });
+  const outlookInboxQuery = trpc.microsoft.inbox.useQuery({ limit: 25 }, {
+    enabled: canManageEmailSettings && microsoftStatusQuery.data?.connected === true && showOutlookInbox,
+  });
   const calendarTaskGroups = useMemo(
     () => groupTasksByDay(filterTasksByDirectReport(applySavedFilter(tasksData, activeSavedCriteria), directReportFilter)),
     [tasksData, activeSavedCriteria, directReportFilter],
@@ -1451,6 +1498,10 @@ export default function Dashboard() {
     setEmailRecipient(emailSettingsQuery.data.recipient);
     setEmailDeliveryTime(emailSettingsQuery.data.deliveryTimeSast);
   }, [emailSettingsQuery.data]);
+
+  useEffect(() => {
+    if (outlookImportCategoryId === null && categoriesData[0]) setOutlookImportCategoryId(categoriesData[0].id);
+  }, [categoriesData, outlookImportCategoryId]);
 
   // ---- Handlers ----
   const handleUpdateCat = useCallback((id: number, data: Partial<Category>) => {
@@ -2191,6 +2242,58 @@ export default function Dashboard() {
             )}
           </section>
 
+          <section aria-label="Outlook Calendar and email" className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="m-0 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}><CalendarDays size={14} /> Outlook Calendar &amp; email</h2>
+                <p className="m-0 mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>View your Outlook calendar, save due tasks as Private/Available events, and add only emails you select as tasks.</p>
+              </div>
+              {microsoftStatusQuery.data?.connected && <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--status-good)", background: "var(--drop-wash)" }}>Connected</span>}
+            </div>
+            {authLoading ? (
+              <p className="m-0 mt-3 text-[12px]" style={{ color: "var(--text-secondary)" }}>Checking Outlook permissions…</p>
+            ) : !canManageEmailSettings ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Sign in as the dashboard owner to connect and use Outlook.</p>
+                <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} type="button" onClick={() => startLogin()}>Sign in to connect</button>
+              </div>
+            ) : microsoftStatusQuery.isLoading ? (
+              <p className="m-0 mt-3 text-[12px]" style={{ color: "var(--text-secondary)" }}>Loading Outlook connection…</p>
+            ) : !microsoftStatusQuery.data?.connected ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Connect your corporate Microsoft account to enable this private, delegated integration.</p>
+                <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "white", background: "var(--slot-1)", borderColor: "var(--slot-1)" }} type="button" onClick={() => window.location.assign("/api/integrations/microsoft/start")}>Connect Outlook</button>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Connected as <strong style={{ color: "var(--text-primary)" }}>{microsoftStatusQuery.data.email ?? microsoftStatusQuery.data.displayName ?? "your Microsoft account"}</strong>.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit]" style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--slot-1)" }} type="button" onClick={() => setShowOutlookInbox((shown) => !shown)}>{showOutlookInbox ? "Hide selected-email list" : "Select email to add as task"}</button>
+                  <button className="rounded-lg border px-3 py-1.5 text-[11px] font-[inherit] disabled:opacity-60" style={{ color: "var(--status-critical)", background: "var(--page-plane)", borderColor: "var(--status-critical)" }} type="button" disabled={disconnectOutlookMut.isPending} onClick={() => disconnectOutlookMut.mutate()}>{disconnectOutlookMut.isPending ? "Disconnecting…" : "Disconnect Outlook"}</button>
+                </div>
+                {showOutlookInbox && (
+                  <div className="mt-3 rounded-lg border p-2.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="m-0 text-[11px]" style={{ color: "var(--text-secondary)" }}>Choose an email deliberately; its body is not copied into the task.</p>
+                      <select aria-label="Outlook email destination category" className="rounded-md border px-2 py-1 text-[11px] font-[inherit]" style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} value={outlookImportCategoryId ?? ""} onChange={(event) => setOutlookImportCategoryId(Number(event.target.value))}>
+                        {categoriesData.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                    </div>
+                    {outlookInboxQuery.isLoading ? <p className="m-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>Loading recent Outlook email…</p> : (
+                      <div className="max-h-64 space-y-1 overflow-y-auto">
+                        {(outlookInboxQuery.data ?? []).map((message) => <div key={message.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+                          <div className="min-w-0 flex-1"><p className="m-0 truncate text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>{message.subject}</p><p className="m-0 mt-0.5 truncate text-[10px]" style={{ color: "var(--text-secondary)" }}>{message.senderName}{message.receivedAt ? ` · ${new Date(message.receivedAt).toLocaleString()}` : ""}</p></div>
+                          <button className="rounded-md border px-2 py-1 text-[10px] font-[inherit] disabled:opacity-60" style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--slot-1)" }} type="button" disabled={!outlookImportCategoryId || importOutlookEmailMut.isPending} onClick={() => outlookImportCategoryId && importOutlookEmailMut.mutate({ messageId: message.id, categoryId: outlookImportCategoryId })}>Add task</button>
+                        </div>)}
+                        {outlookInboxQuery.data?.length === 0 && <p className="m-0 py-2 text-center text-[11px]" style={{ color: "var(--text-secondary)" }}>No recent messages found.</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Add category */}
           <div className="flex gap-2 mb-4 items-center">
             <input
@@ -2408,6 +2511,8 @@ export default function Dashboard() {
                         directReports={directReports}
                         onUpdate={handleUpdateTask}
                         onDelete={handleDeleteTask}
+                        outlookConnected={microsoftStatusQuery.data?.connected === true}
+                        onSyncToOutlook={(taskId) => syncOutlookTaskMut.mutate({ taskId })}
                       />
                     ))}
                   </div>
@@ -2417,6 +2522,14 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+              {microsoftStatusQuery.data?.connected && (
+                <div className="mt-4 rounded-lg border p-3" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                  <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="m-0 text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>Outlook events</h3><p className="m-0 mt-0.5 text-[10px]" style={{ color: "var(--text-secondary)" }}>Current month from your connected corporate calendar.</p></div><span className="rounded-full px-2 py-1 text-[10px]" style={{ color: "var(--slot-1)", background: "var(--card-surface)" }}>Private data</span></div>
+                  {outlookCalendarQuery.isLoading ? <p className="m-0 text-[11px]" style={{ color: "var(--text-secondary)" }}>Loading Outlook events…</p> : (
+                    <div className="max-h-52 space-y-1 overflow-y-auto">{(outlookCalendarQuery.data ?? []).map((event) => <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-[11px]" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)", color: "var(--text-primary)" }}><span className="min-w-0 truncate">{event.subject}</span><span className="shrink-0" style={{ color: "var(--text-secondary)" }}>{event.isAllDay ? "All day" : "Timed"}</span></div>)}{outlookCalendarQuery.data?.length === 0 && <p className="m-0 py-2 text-center text-[11px]" style={{ color: "var(--text-secondary)" }}>No Outlook events this month.</p>}</div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

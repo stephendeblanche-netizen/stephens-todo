@@ -9,4 +9,7 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   gmailSmtpUser: process.env.GMAIL_SMTP_USER ?? "",
   gmailSmtpAppPassword: process.env.GMAIL_SMTP_APP_PASSWORD ?? "",
+  microsoftTenantId: process.env.MICROSOFT_TENANT_ID ?? "",
+  microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? "",
+  microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
 };

@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, mobilePushDevices, mobileReminderSchedules, savedFilters, tasks, users } from "../drizzle/schema";
+import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, microsoftConnections, microsoftEmailImports, microsoftTaskEvents, mobilePushDevices, mobileReminderSchedules, savedFilters, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -157,6 +157,77 @@ export async function deleteDirectReport(id: number) {
   await db.delete(directReports).where(eq(directReports.id, id));
 }
 
+// ---- Microsoft Outlook delegated connection ----
+
+export async function getMicrosoftConnection(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(microsoftConnections).where(eq(microsoftConnections.userId, userId)).limit(1);
+  return result[0];
+}
+
+export async function upsertMicrosoftConnection(data: {
+  userId: number;
+  tenantId: string;
+  accountId: string;
+  accountEmail?: string | null;
+  displayName?: string | null;
+  tokenCiphertext: string;
+  tokenExpiresAt?: Date | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(microsoftConnections).values(data).onDuplicateKeyUpdate({
+    set: {
+      tenantId: data.tenantId,
+      accountId: data.accountId,
+      accountEmail: data.accountEmail ?? null,
+      displayName: data.displayName ?? null,
+      tokenCiphertext: data.tokenCiphertext,
+      tokenExpiresAt: data.tokenExpiresAt ?? null,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function deleteMicrosoftConnection(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(microsoftConnections).where(eq(microsoftConnections.userId, userId));
+}
+
+export async function getMicrosoftTaskEvent(userId: number, taskId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(microsoftTaskEvents)
+    .where(and(eq(microsoftTaskEvents.userId, userId), eq(microsoftTaskEvents.taskId, taskId)))
+    .limit(1);
+  return result[0];
+}
+
+export async function upsertMicrosoftTaskEvent(data: { userId: number; taskId: number; eventId: string; webLink?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(microsoftTaskEvents).values(data).onDuplicateKeyUpdate({
+    set: { eventId: data.eventId, webLink: data.webLink ?? null, updatedAt: new Date() },
+  });
+}
+
+export async function getMicrosoftEmailImport(userId: number, messageId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(microsoftEmailImports)
+    .where(and(eq(microsoftEmailImports.userId, userId), eq(microsoftEmailImports.messageId, messageId)))
+    .limit(1);
+  return result[0];
+}
+
+export async function createMicrosoftEmailImport(data: { userId: number; messageId: string; taskId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(microsoftEmailImports).values(data);
+}
+
 // ---- Scheduled dashboard email ----
 
 export async function getDashboardEmailScheduleByTaskUid(taskUid: string): Promise<DashboardEmailSchedule | undefined> {
@@ -242,6 +313,13 @@ export async function getAllTasks() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
+}
+
+export async function getTaskById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  return result[0];
 }
 
 export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; mobileClientMutationId?: string }) {

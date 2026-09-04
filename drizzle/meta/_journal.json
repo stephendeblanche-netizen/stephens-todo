@@ -71,6 +71,13 @@
       "when": 1786956082479,
       "tag": "0009_gorgeous_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1788516806288,
+      "tag": "0010_clean_black_knight",
+      "breakpoints": true
     }
   ]
 }

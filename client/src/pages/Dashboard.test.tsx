@@ -47,6 +47,7 @@ vi.mock("@/lib/trpc", () => ({
       filters: { list: { invalidate: vi.fn() } },
       directReports: { list: { invalidate: vi.fn() } },
       dashboardEmailSettings: { get: { invalidate: vi.fn() } },
+      microsoft: { status: { invalidate: vi.fn() }, calendarEvents: { invalidate: vi.fn() }, inbox: { invalidate: vi.fn() } },
     }),
     categories: {
       list: { useQuery: () => ({ data: fixture.categories, isLoading: false }) },
@@ -71,6 +72,14 @@ vi.mock("@/lib/trpc", () => ({
     dashboardEmailSettings: {
       get: { useQuery: () => ({ data: fixture.emailSettings, isLoading: false }) },
       update: { useMutation: () => ({ mutate: fixture.updateEmailSettingsMutate, isPending: false }) },
+    },
+    microsoft: {
+      status: { useQuery: () => ({ data: { connected: false, email: null, displayName: null, expiresAt: null }, isLoading: false }) },
+      calendarEvents: { useQuery: () => ({ data: [], isLoading: false }) },
+      inbox: { useQuery: () => ({ data: [], isLoading: false }) },
+      syncTaskEvent: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      importEmailAsTask: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      disconnect: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
     },
     data: {
       export: { useQuery: () => ({ refetch: vi.fn() }) },
@@ -449,6 +458,14 @@ describe("Dashboard focused priority views", () => {
     await user.click(screen.getByRole("button", { name: "Save delivery" }));
 
     expect(fixture.updateEmailSettingsMutate).not.toHaveBeenCalled();
+  });
+
+  it("shows the owner-only Outlook connection panel before delegated data is available", () => {
+    renderDashboard("all");
+
+    expect(screen.getByRole("region", { name: "Outlook Calendar and email" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Connect Outlook" })).not.toBeNull();
+    expect(screen.getByText(/private, delegated integration/i)).not.toBeNull();
   });
 
   it("toggles a task detail panel below the row when the priority flag is clicked", async () => {

@@ -36,6 +36,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { tasks as tasksTable } from "../drizzle/schema";
 import { getDb } from "./db";
 import { buildDashboardExport } from "./dashboardExport";
+import { microsoftRouter } from "./microsoftRouter";
 
 function cronFromSastTime(deliveryTimeSast: string) {
   const [hour, minute] = deliveryTimeSast.split(":").map(Number);
@@ -103,6 +104,8 @@ export const appRouter = router({
         return { success: true };
       }),
   }),
+
+  microsoft: microsoftRouter,
 
   // ---- Categories ----
   categories: router({
