@@ -167,6 +167,24 @@ describe("restored iOS companion interactions", () => {
     expect(categoryInput.props.autoFocus).toBe(true);
   });
 
+  it("renders every new-task setup control inside a capped, scrollable keyboard-safe sheet", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
+    const taskScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => Array.isArray(node.props.style) && node.props.style.some((style: any) => style?.maxHeight === "92%"))!;
+
+    expect(taskScroll.props.showsVerticalScrollIndicator).toBe(true);
+    expect(taskScroll.props.keyboardShouldPersistTaps).toBe("handled");
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Set new task priority high")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ava to new task")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Choose due date for new task")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Set new task repeat weekly")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")).toBeTruthy();
+  });
+
   it("uses a dedicated scrollable category picker that keeps long destination lists reachable", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,

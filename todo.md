@@ -490,3 +490,9 @@
 - [x] Add a review-first native email composer that opens the device’s configured corporate email client only after explicit confirmation
 - [x] Preserve recipient, Cc, subject, and message text in the handoff without storing email contents on the dashboard
 - [x] Add iPhone and iPad regression coverage for no-send drafting, review, and confirmed client handoff
+
+## Native Task Setup Window Rendering
+- [x] Diagnose the new-task detail form rendering issue on iPhone and iPad
+- [x] Ensure assignment, priority, due date, repeat, and save controls render within one scrollable keyboard-safe sheet
+- [x] Add regression coverage for the fully rendered native task-setup form
+- [x] Build and submit the corrected native task-setup window to TestFlight
