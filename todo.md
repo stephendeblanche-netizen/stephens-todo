@@ -502,3 +502,9 @@
 - [x] Keep the action footer visible above the iPhone keyboard while task details remain scrollable
 - [x] Add regression coverage for keyboard-safe Cancel and Add task controls
 - [x] Build and submit the fixed native task form to TestFlight
+
+## Native Task Setup Position and Resume Recovery
+- [x] Lower the keyboard-safe task-setup sheet slightly without allowing its action footer to overlap the keyboard
+- [x] Restore the task-capture section reliably after the native app returns from background state
+- [x] Add regression coverage for keyboard position and app-resume capture visibility
+- [x] Build and submit the native task-sheet correction to TestFlight

@@ -4,6 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const alertMock = vi.hoisted(() => vi.fn());
 const linking = vi.hoisted(() => ({ canOpenURL: vi.fn(), openURL: vi.fn() }));
+const keyboard = vi.hoisted(() => ({ dismiss: vi.fn() }));
+const appState = vi.hoisted(() => {
+  let listener: ((state: string) => void) | null = null;
+  return {
+    currentState: "active",
+    addEventListener: vi.fn((_event: string, callback: (state: string) => void) => { listener = callback; return { remove: vi.fn(() => { listener = null; }) }; }),
+    emit: (state: string) => listener?.(state),
+    reset: () => { listener = null; },
+  };
+});
 const api = vi.hoisted(() => ({ getDashboard: vi.fn(), patchTask: vi.fn(), createTaskRemote: vi.fn(), deleteTaskRemote: vi.fn(), createCategoryRemote: vi.fn(), createDirectReportRemote: vi.fn(), updateCategoryRemote: vi.fn(), deleteCategoryRemote: vi.fn(), reorderCategoriesRemote: vi.fn(), updateDirectReportRemote: vi.fn(), deleteDirectReportRemote: vi.fn(), reorderTasksRemote: vi.fn() }));
 vi.mock("./api", () => api);
 vi.mock("expo-haptics", () => ({ ImpactFeedbackStyle: { Light: "light" }, impactAsync: vi.fn() }));
@@ -26,7 +36,7 @@ vi.mock("react-native", async () => {
   return {
     ActivityIndicator: stub("ActivityIndicator"), Alert: { alert: alertMock }, FlatList: ({ data, renderItem, ListEmptyComponent, ...props }: any) => ReactModule.createElement("FlatList", props, data.length ? data.map((item: any, index: number) => renderItem({ item, index })) : ListEmptyComponent),
     Modal: ({ visible, children }: any) => visible ? ReactModule.createElement("Modal", null, children) : null,
-    Keyboard: { dismiss: vi.fn() }, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Linking: linking, Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"), useWindowDimensions: () => ({ width: 375, height: 812, scale: 1, fontScale: 1 }),
+    AppState: appState, Keyboard: keyboard, KeyboardAvoidingView: stub("KeyboardAvoidingView"), Linking: linking, Platform: { OS: "ios" }, Pressable: stub("Pressable"), RefreshControl: stub("RefreshControl"), SafeAreaView: stub("SafeAreaView"), ScrollView: stub("ScrollView"), StyleSheet: { create: (styles: any) => styles }, Text: stub("Text"), TextInput: stub("TextInput"), View: stub("View"), useWindowDimensions: () => ({ width: 375, height: 812, scale: 1, fontScale: 1 }),
   };
 });
 
@@ -61,6 +71,8 @@ describe("restored iOS companion interactions", () => {
     api.reorderTasksRemote.mockReset().mockResolvedValue({ success: true });
     linking.canOpenURL.mockReset().mockResolvedValue(true);
     linking.openURL.mockReset().mockResolvedValue(undefined);
+    keyboard.dismiss.mockReset();
+    appState.reset();
     alertMock.mockReset();
   });
 
@@ -174,7 +186,7 @@ describe("restored iOS companion interactions", () => {
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
-    const taskScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => Array.isArray(node.props.style) && node.props.style.some((style: any) => style?.maxHeight === "88%"))!;
+    const taskScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => Array.isArray(node.props.style) && node.props.style.some((style: any) => style?.maxHeight === "78%"))!;
     const footer = root.findAll((node) => node.props.accessibilityLabel === "Task setup action footer")[0]!;
 
     expect(taskScroll.props.showsVerticalScrollIndicator).toBe(true);
@@ -186,6 +198,20 @@ describe("restored iOS companion interactions", () => {
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")).toBeTruthy();
     expect(footer.findAll((node) => node.props.accessibilityLabel === "Cancel task setup").length).toBeGreaterThan(0);
     expect(taskScroll.findAll((node) => node.props.accessibilityLabel === "Confirm add task")).toHaveLength(0);
+  });
+
+  it("restores the task capture section at the top of the form when the app returns from background", async () => {
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
+
+    await act(async () => { appState.emit("background"); appState.emit("active"); await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(keyboard.dismiss).toHaveBeenCalled();
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add task")).toHaveLength(1);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")).toBeTruthy();
   });
 
   it("uses a dedicated scrollable category picker that keeps long destination lists reachable", async () => {
