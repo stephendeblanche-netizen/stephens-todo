@@ -174,7 +174,8 @@ describe("restored iOS companion interactions", () => {
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add item")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add task")!);
-    const taskScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => Array.isArray(node.props.style) && node.props.style.some((style: any) => style?.maxHeight === "92%"))!;
+    const taskScroll = root.findAll((node) => String(node.type) === "ScrollView").find((node) => Array.isArray(node.props.style) && node.props.style.some((style: any) => style?.maxHeight === "88%"))!;
+    const footer = root.findAll((node) => node.props.accessibilityLabel === "Task setup action footer")[0]!;
 
     expect(taskScroll.props.showsVerticalScrollIndicator).toBe(true);
     expect(taskScroll.props.keyboardShouldPersistTaps).toBe("handled");
@@ -183,6 +184,8 @@ describe("restored iOS companion interactions", () => {
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Choose due date for new task")).toBeTruthy();
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Set new task repeat weekly")).toBeTruthy();
     expect(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")).toBeTruthy();
+    expect(footer.findAll((node) => node.props.accessibilityLabel === "Cancel task setup").length).toBeGreaterThan(0);
+    expect(taskScroll.findAll((node) => node.props.accessibilityLabel === "Confirm add task")).toHaveLength(0);
   });
 
   it("uses a dedicated scrollable category picker that keeps long destination lists reachable", async () => {

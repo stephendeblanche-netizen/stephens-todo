@@ -496,3 +496,9 @@
 - [x] Ensure assignment, priority, due date, repeat, and save controls render within one scrollable keyboard-safe sheet
 - [x] Add regression coverage for the fully rendered native task-setup form
 - [x] Build and submit the corrected native task-setup window to TestFlight
+
+## Native Task Form Keyboard-Safe Footer
+- [x] Separate the long native task form from its Cancel and Add task action footer
+- [x] Keep the action footer visible above the iPhone keyboard while task details remain scrollable
+- [x] Add regression coverage for keyboard-safe Cancel and Add task controls
+- [x] Build and submit the fixed native task form to TestFlight
