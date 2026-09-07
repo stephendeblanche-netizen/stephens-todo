@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, microsoftConnections, microsoftEmailImports, microsoftTaskEvents, mobilePushDevices, mobileReminderSchedules, savedFilters, tasks, users } from "../drizzle/schema";
+import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, microsoftConnections, microsoftEmailImports, microsoftTaskEvents, mobilePushDevices, mobileReminderSchedules, savedFilters, taskResponsibleColleagues, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -88,7 +88,9 @@ export async function updateCategory(id: number, data: Partial<{ name: string; k
 export async function deleteCategory(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  // Delete all tasks in this category first
+  const categoryTasks = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.categoryId, id));
+  for (const task of categoryTasks) await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, task.id));
+  // Delete all tasks in this category first.
   await db.delete(tasks).where(eq(tasks.categoryId, id));
   await db.delete(categories).where(eq(categories.id, id));
 }
@@ -153,6 +155,12 @@ export async function updateDirectReport(id: number, data: Partial<{ name: strin
 export async function deleteDirectReport(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  const affectedAssignments = await db.select({ taskId: taskResponsibleColleagues.taskId }).from(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.directReportId, id));
+  await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.directReportId, id));
+  for (const { taskId } of affectedAssignments) {
+    const remaining = await db.select({ directReportId: taskResponsibleColleagues.directReportId }).from(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, taskId)).limit(1);
+    await db.update(tasks).set({ accountableDirectReportId: remaining[0]?.directReportId ?? null }).where(eq(tasks.id, taskId));
+  }
   await db.update(tasks).set({ accountableDirectReportId: null }).where(eq(tasks.accountableDirectReportId, id));
   await db.delete(directReports).where(eq(directReports.id, id));
 }
@@ -303,26 +311,49 @@ export async function updateMobileReminderSchedule(id: number, data: Partial<{ e
 
 // ---- Tasks ----
 
+export type TaskWithResponsibleColleagues = typeof tasks.$inferSelect & { responsibleColleagueIds: number[] };
+
+async function attachResponsibleColleagues(taskRows: Array<typeof tasks.$inferSelect>): Promise<TaskWithResponsibleColleagues[]> {
+  const db = await getDb();
+  if (!db) return taskRows.map((task) => ({ ...task, responsibleColleagueIds: task.accountableDirectReportId === null ? [] : [task.accountableDirectReportId] }));
+  const assignments = await db.select({ taskId: taskResponsibleColleagues.taskId, directReportId: taskResponsibleColleagues.directReportId }).from(taskResponsibleColleagues);
+  const idsByTask = new Map<number, number[]>();
+  for (const assignment of assignments) idsByTask.set(assignment.taskId, [...(idsByTask.get(assignment.taskId) ?? []), assignment.directReportId]);
+  return taskRows.map((task) => ({
+    ...task,
+    responsibleColleagueIds: idsByTask.get(task.id) ?? (task.accountableDirectReportId === null ? [] : [task.accountableDirectReportId]),
+  }));
+}
+
+async function replaceTaskResponsibleColleagues(taskId: number, directReportIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const ids = Array.from(new Set(directReportIds.filter((id) => Number.isInteger(id) && id > 0)));
+  await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, taskId));
+  if (ids.length > 0) await db.insert(taskResponsibleColleagues).values(ids.map((directReportId) => ({ taskId, directReportId })));
+  await db.update(tasks).set({ accountableDirectReportId: ids[0] ?? null }).where(eq(tasks.id, taskId));
+}
+
 export async function getTasksByCategory(categoryId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(tasks).where(eq(tasks.categoryId, categoryId)).orderBy(asc(tasks.sortOrder));
+  return attachResponsibleColleagues(await db.select().from(tasks).where(eq(tasks.categoryId, categoryId)).orderBy(asc(tasks.sortOrder)));
 }
 
 export async function getAllTasks() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder));
+  return attachResponsibleColleagues(await db.select().from(tasks).orderBy(asc(tasks.categoryId), asc(tasks.sortOrder)));
 }
 
 export async function getTaskById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-  return result[0];
+  return (await attachResponsibleColleagues(result))[0];
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; mobileClientMutationId?: string }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; responsibleColleagueIds?: number[]; mobileClientMutationId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
@@ -332,14 +363,17 @@ export async function createTask(data: { categoryId: number; parentId?: number; 
     note: "",
     dueAt: data.dueAt ?? null,
     priority: data.priority ?? "medium",
-    accountableDirectReportId: data.accountableDirectReportId ?? null,
+    accountableDirectReportId: data.responsibleColleagueIds?.[0] ?? data.accountableDirectReportId ?? null,
     recurrence: data.recurrence ?? "none",
     mobileClientMutationId: data.mobileClientMutationId ?? null,
     done: false,
     collapsed: false,
     sortOrder: data.sortOrder,
   });
-  return (result as unknown as { insertId: number }).insertId;
+  const id = (result as unknown as { insertId: number }).insertId;
+  if (data.responsibleColleagueIds !== undefined) await replaceTaskResponsibleColleagues(id, data.responsibleColleagueIds);
+  else if (data.accountableDirectReportId !== null && data.accountableDirectReportId !== undefined) await replaceTaskResponsibleColleagues(id, [data.accountableDirectReportId]);
+  return id;
 }
 
 export async function getTaskByMobileClientMutationId(mobileClientMutationId: string) {
@@ -349,24 +383,27 @@ export async function getTaskByMobileClientMutationId(mobileClientMutationId: st
   return rows[0];
 }
 
-export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportId: number | null; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
+export async function updateTask(id: number, data: Partial<{ text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportId: number | null; responsibleColleagueIds: number[]; done: boolean; collapsed: boolean; sortOrder: number; categoryId: number; parentId: number | null }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
   if (!existing) return;
 
+  const { responsibleColleagueIds, ...taskData } = data;
+  if (responsibleColleagueIds !== undefined) await replaceTaskResponsibleColleagues(id, responsibleColleagueIds);
+
   // Completing a repeating task means it is ready for its next occurrence.
   if (data.done === true && (data.recurrence ?? existing.recurrence) !== "none") {
     const recurrence = data.recurrence ?? existing.recurrence;
     await db.update(tasks).set({
-      ...data,
+      ...taskData,
       dueAt: nextRecurringDueAt(data.dueAt ?? existing.dueAt, recurrence),
       done: false,
     }).where(eq(tasks.id, id));
     return;
   }
 
-  await db.update(tasks).set(data).where(eq(tasks.id, id));
+  await db.update(tasks).set(taskData).where(eq(tasks.id, id));
 }
 
 export async function deleteTask(id: number) {
@@ -377,6 +414,7 @@ export async function deleteTask(id: number) {
   for (const child of children) {
     await deleteTask(child.id);
   }
+  await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, id));
   await db.delete(tasks).where(eq(tasks.id, id));
 }
 
@@ -415,7 +453,7 @@ export async function getTopLevelTasks(categoryId: number) {
 
 export async function replaceAllData(
   newCategories: Array<{ name: string; kind: "urgent" | "normal"; colorIndex: number; sortOrder: number; collapsed: boolean }>,
-  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportIndex: number | null; done: boolean; collapsed: boolean; sortOrder: number }>,
+  newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportIndex: number | null; responsibleColleagueIndices?: number[]; done: boolean; collapsed: boolean; sortOrder: number }>,
   newSavedFilters?: Array<{ name: string; priority: "all" | "high" | "medium" | "low"; dueRange: "all" | "today" | "this_week" | "next_7_days" | "overdue" | "no_due_date"; categoryIndex: number | null; includeCompleted: boolean; sortOrder: number }>,
   newDirectReports?: Array<{ name: string; sortOrder: number }>,
 ) {
@@ -423,6 +461,7 @@ export async function replaceAllData(
   if (!db) throw new Error("DB unavailable");
 
   // Clear all
+  await db.delete(taskResponsibleColleagues);
   await db.delete(tasks);
   await db.delete(categories);
 
@@ -462,6 +501,9 @@ export async function replaceAllData(
       sortOrder: task.sortOrder,
     });
     const newId = (result as unknown as { insertId: number }).insertId;
+    const indices = task.responsibleColleagueIndices ?? (task.accountableDirectReportIndex === null ? [] : [task.accountableDirectReportIndex]);
+    const assignedIds = indices.map((index) => directReportIds[index]).filter((id): id is number => id !== undefined);
+    if (assignedIds.length > 0) await db.insert(taskResponsibleColleagues).values(Array.from(new Set(assignedIds)).map((directReportId) => ({ taskId: newId, directReportId })));
     taskIdMap.set(task.tempId, newId);
   }
 

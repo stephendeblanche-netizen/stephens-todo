@@ -185,3 +185,17 @@ export const tasks = mysqlTable("tasks", {
 
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
+
+// A task can be assigned to one or more Responsible Colleagues. The legacy
+// accountableDirectReportId remains as the compatibility primary assignment.
+export const taskResponsibleColleagues = mysqlTable("task_responsible_colleagues", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("task_id").notNull(),
+  directReportId: int("direct_report_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("task_responsible_colleagues_task_report_uidx").on(table.taskId, table.directReportId),
+  index("task_responsible_colleagues_report_idx").on(table.directReportId),
+]);
+
+export type TaskResponsibleColleague = typeof taskResponsibleColleagues.$inferSelect;

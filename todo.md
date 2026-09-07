@@ -508,3 +508,12 @@
 - [x] Restore the task-capture section reliably after the native app returns from background state
 - [x] Add regression coverage for keyboard position and app-resume capture visibility
 - [x] Build and submit the native task-sheet correction to TestFlight
+
+## Browser Rendering and Multi-Person Assignment
+- [x] Fix the browser detail panel for Ratio Forecast to Mo Gafoor defaulting to an expanded state
+- [x] Correct browser task-list spacing after the Offer to Ollie task
+- [x] Extend the shared task data model to support multiple Responsible Colleagues while preserving existing assignments
+- [x] Add multi-person Responsible Colleague selection, display, and filtering to the browser dashboard
+- [x] Add multi-person Responsible Colleague selection, display, and filtering to the iPhone and iPad companion
+- [x] Add browser and iOS regression coverage for rendering fixes and multi-person assignment workflows
+- [x] Build and submit the native multi-person assignment update to TestFlight

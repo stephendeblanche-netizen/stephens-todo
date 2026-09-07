@@ -123,7 +123,7 @@ describe("restored iOS companion interactions", () => {
     await act(async () => { newTaskInput.props.onChangeText("Configured task"); });
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add task")!);
 
-    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ text: "Configured task", priority: "high", accountableDirectReportId: 4, recurrence: "weekly", dueAt: new Date(2026, 8, 15).getTime() }));
+    expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ text: "Configured task", priority: "high", responsibleColleagueIds: [4], recurrence: "weekly", dueAt: new Date(2026, 8, 15).getTime() }));
   });
 
   it("reviews a native corporate email and opens the email client only after explicit confirmation", async () => {
@@ -332,13 +332,28 @@ describe("restored iOS companion interactions", () => {
     await chooseLandingCategory(root, "All tasks");
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Prepare brief")!);
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ava to Prepare brief")!);
-    expect(api.patchTask).toHaveBeenCalledWith(9, { accountableDirectReportId: 4 });
+    expect(api.patchTask).toHaveBeenCalledWith(9, { responsibleColleagueIds: [4] });
 
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Add sub-category under Prepare brief")!);
     const subCategoryInput = root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Add sub-category")[0]!;
     await act(async () => { subCategoryInput.props.onChangeText("Prepare proposal"); });
     await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Confirm add sub-category")!);
     expect(api.createTaskRemote).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 1, parentId: 9, text: "Prepare proposal" }));
+  });
+
+  it("adds an individual Responsible Colleague without replacing existing selections", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      directReports: [{ id: 4, name: "Ava", sortOrder: 0 }, { id: 5, name: "Ben", sortOrder: 1 }],
+      tasks: [{ ...dashboard.tasks[0], responsibleColleagueIds: [4], accountableDirectReportId: 4 }],
+    });
+    let renderer: ReactTestRenderer;
+    await act(async () => { renderer = create(<App />); await Promise.resolve(); });
+    const root = renderer!.root;
+
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Change priority for Prepare brief")!);
+    await tap(pressables(root).find((node) => node.props.accessibilityLabel === "Assign Responsible Colleague Ben to Prepare brief")!);
+    expect(api.patchTask).toHaveBeenCalledWith(9, { responsibleColleagueIds: [4, 5] });
   });
 
   it("renders a compact category selector, adjacent management action, and hideable task controls on iPhone", async () => {
@@ -371,7 +386,7 @@ describe("restored iOS companion interactions", () => {
   it("filters the native task list by an individual Responsible Colleague, N/A, or all colleagues", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
-      tasks: [...dashboard.tasks, { ...dashboard.tasks[0], id: 10, text: "Ava work item", accountableDirectReportId: 4, sortOrder: 1 }],
+      tasks: [...dashboard.tasks, { ...dashboard.tasks[0], id: 10, text: "Ava work item", accountableDirectReportId: 4, responsibleColleagueIds: [4], sortOrder: 1 }],
     });
     let renderer: ReactTestRenderer;
     await act(async () => { renderer = create(<App />); await Promise.resolve(); });

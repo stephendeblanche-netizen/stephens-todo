@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
@@ -18,7 +18,7 @@ const fixture = vi.hoisted(() => ({
   ] as Array<{
     id: number; categoryId: number; parentId: number | null; text: string; note: string; dueAt: number | null;
     priority: "high" | "medium" | "low"; recurrence: "none" | "daily" | "weekly" | "monthly";
-    accountableDirectReportId: number | null; done: boolean; collapsed: boolean; sortOrder: number;
+    accountableDirectReportId: number | null; responsibleColleagueIds?: number[]; done: boolean; collapsed: boolean; sortOrder: number;
   }>,
   filters: [
     { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
@@ -113,6 +113,7 @@ describe("Dashboard focused priority views", () => {
       { id: 2, categoryId: 2, parentId: null, text: "Medium due today", note: "", dueAt: todayAtNoon.getTime(), priority: "medium", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
       { id: 3, categoryId: 2, parentId: null, text: "High upcoming", note: "", dueAt: tomorrowAtNoon.getTime(), priority: "high", recurrence: "weekly", accountableDirectReportId: 1, done: false, collapsed: false, sortOrder: 2 },
     ];
+    fixture.directReports = [{ id: 1, name: "Alex Morgan", sortOrder: 0 }];
     fixture.updateFilterMutate.mockReset();
     fixture.taskUpdateMutate.mockReset();
     fixture.taskDeleteMutate.mockReset();
@@ -359,13 +360,17 @@ describe("Dashboard focused priority views", () => {
     expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
   });
 
-  it("offers N/A and Responsible Colleagues for task accountability and saves the selection", async () => {
+  it("allows multiple Responsible Colleagues to be selected in expanded task details", async () => {
     const user = userEvent.setup();
+    fixture.directReports = [{ id: 1, name: "Alex Morgan", sortOrder: 0 }, { id: 2, name: "Jordan Lee", sortOrder: 1 }];
+    fixture.tasks[0] = { ...fixture.tasks[0]!, responsibleColleagueIds: [1] };
     renderDashboard("all");
-    const accountable = screen.getAllByRole("combobox", { name: "Responsible Colleague for Urgent high today" })[0] as HTMLSelectElement;
-    expect(Array.from(accountable.options).map((option) => option.text)).toEqual(["N/A", "Alex Morgan"]);
-    await user.selectOptions(accountable, "na");
-    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, accountableDirectReportId: null });
+    expect(screen.queryByRole("region", { name: "Task details for Urgent high today" })).toBeNull();
+    await user.click(screen.getAllByRole("button", { name: "Toggle details for Urgent high today" })[0]!);
+    const colleagues = within(screen.getByRole("group", { name: "Responsible Colleagues for Urgent high today" }));
+    expect(colleagues.getByRole("button", { name: "Alex Morgan" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(colleagues.getByRole("button", { name: "Jordan Lee" }));
+    expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, responsibleColleagueIds: [1, 2] });
   });
 
   it("filters the main task list to a selected Responsible Colleague", async () => {
@@ -512,7 +517,7 @@ describe("Dashboard focused priority views", () => {
     const flagButtons = screen.getAllByRole("button", { name: "Toggle details for Urgent high today" });
     await user.click(flagButtons[0]!);
     expect(screen.getByRole("region", { name: "Task details for Urgent high today" })).not.toBeNull();
-    expect(screen.getByLabelText("Responsible Colleague details for Urgent high today")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Responsible Colleagues for Urgent high today" })).not.toBeNull();
     const detailNotes = screen.getByLabelText("Notes in task details for Urgent high today");
     await user.clear(detailNotes);
     await user.type(detailNotes, "Updated through priority details");

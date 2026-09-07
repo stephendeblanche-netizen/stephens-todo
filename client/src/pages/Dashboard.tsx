@@ -29,7 +29,7 @@ import { buildBulkCategoryMoveUpdates, buildBulkIndentUpdates } from "@/lib/task
 import { useComposition } from "@/hooks/useComposition";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
-import type { Category, DirectReport, SavedFilter, Task } from "../../../drizzle/schema";
+import type { Category, DirectReport, SavedFilter, Task as DatabaseTask } from "../../../drizzle/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -107,6 +107,19 @@ const PRIORITY_META = {
   low: { label: "Low", color: "var(--status-good)" },
 } as const;
 
+type Task = DatabaseTask & { responsibleColleagueIds?: number[] };
+
+function taskResponsibleColleagueIds(task: Task): number[] {
+  return task.responsibleColleagueIds ?? (task.accountableDirectReportId === null ? [] : [task.accountableDirectReportId]);
+}
+
+function taskResponsibleColleagueLabel(task: Task, directReports: DirectReport[]): string {
+  const names = taskResponsibleColleagueIds(task)
+    .map((id) => directReports.find((report) => report.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+  return names.length > 0 ? names.join(", ") : "N/A";
+}
+
 function priorityMeta(priority: Task["priority"]) {
   return PRIORITY_META[priority] ?? PRIORITY_META.medium;
 }
@@ -141,7 +154,7 @@ function matchesDueRangeTree(node: TaskNode, dueRange: DueRange): boolean {
   return node.children.some((child) => matchesDueRangeTree(child, dueRange));
 }
 function matchesDirectReportTree(node: TaskNode, filter: DirectReportFilter): boolean {
-  if (matchesDirectReport(node.accountableDirectReportId, filter)) return true;
+  if (matchesDirectReport(taskResponsibleColleagueIds(node), filter)) return true;
   return node.children.some((child) => matchesDirectReportTree(child, filter));
 }
 function countNodes(nodes: TaskNode[]): { total: number; done: number } {
@@ -212,7 +225,7 @@ function TaskGapDropTarget({
       data-task-drop-target={taskGapDropId(categoryId, parentId, index)}
       className="list-none overflow-hidden rounded-md text-center text-[10px] font-semibold transition-all duration-150"
       style={{
-        height: taskIsDragging ? (empty ? 58 : 18) : (empty ? 42 : 2),
+        height: taskIsDragging ? (empty ? 58 : 18) : (empty ? 42 : 0),
         margin: taskIsDragging ? "2px 0" : 0,
         color: isOver ? "var(--slot-1)" : "transparent",
         background: isOver ? "var(--drop-wash)" : (empty ? "var(--page-plane)" : "transparent"),
@@ -291,7 +304,8 @@ function TaskItem({
   isDragOverlay = false,
 }: TaskItemProps) {
   const [noteOpen, setNoteOpen] = useState(false);
-  const [dueOpen, setDueOpen] = useState(Boolean(node.dueAt));
+  // Details should open only when the user asks. A due date must not expand the row after refresh.
+  const [dueOpen, setDueOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeOpen, setSwipeOpen] = useState(false);
@@ -566,17 +580,16 @@ function TaskItem({
           >
             <Flag size={9} fill="currentColor" /> {priorityMeta(node.priority).label}
           </button>
-          <select
-            value={node.accountableDirectReportId ?? "na"}
-            onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="mt-0.5 max-w-[112px] shrink rounded border px-1 py-0.5 text-[10px] font-[inherit]"
+          <button
+            className="mt-0.5 max-w-[140px] shrink truncate rounded border px-1 py-0.5 text-left text-[10px] font-[inherit]"
             style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-            aria-label={`Responsible Colleague for ${node.text}`}
+            type="button"
+            onClick={(event) => { event.stopPropagation(); setDueOpen(true); }}
+            aria-label={`Edit Responsible Colleagues for ${node.text}`}
+            title={taskResponsibleColleagueLabel(node, directReports)}
           >
-            <option value="na">N/A</option>
-            {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
-          </select>
+            {taskResponsibleColleagueLabel(node, directReports)}
+          </button>
 
           {/* Toolbar */}
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
@@ -784,17 +797,38 @@ function TaskItem({
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
-            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Responsible Colleague</label>
-            <select
-              value={node.accountableDirectReportId ?? "na"}
-              onChange={(event) => onUpdate(node.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
-              className="h-7 max-w-[160px] rounded-md border px-2 text-[11px] font-[inherit]"
-              style={{ color: "var(--text-secondary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
-              aria-label={`Responsible Colleague details for ${node.text}`}
-            >
-              <option value="na">N/A</option>
-              {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
-            </select>
+            <div className="basis-full">
+              <span className="mb-1 block text-[11px]" style={{ color: "var(--text-secondary)" }}>Responsible Colleagues</span>
+              <div className="flex flex-wrap gap-1" role="group" aria-label={`Responsible Colleagues for ${node.text}`}>
+                <button
+                  className="rounded-md border px-2 py-1 text-[10.5px] font-semibold"
+                  style={{ color: taskResponsibleColleagueIds(node).length === 0 ? "var(--slot-1)" : "var(--text-muted)", background: taskResponsibleColleagueIds(node).length === 0 ? "var(--card-surface)" : "var(--page-plane)", borderColor: taskResponsibleColleagueIds(node).length === 0 ? "var(--slot-1)" : "var(--border-color)" }}
+                  type="button"
+                  aria-pressed={taskResponsibleColleagueIds(node).length === 0}
+                  onClick={() => onUpdate(node.id, { responsibleColleagueIds: [] })}
+                >
+                  N/A
+                </button>
+                {directReports.map((report) => {
+                  const selected = taskResponsibleColleagueIds(node).includes(report.id);
+                  return (
+                    <button
+                      key={report.id}
+                      className="rounded-md border px-2 py-1 text-[10.5px] font-semibold"
+                      style={{ color: selected ? "var(--slot-1)" : "var(--text-secondary)", background: selected ? "var(--card-surface)" : "var(--page-plane)", borderColor: selected ? "var(--slot-1)" : "var(--border-color)" }}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        const ids = taskResponsibleColleagueIds(node);
+                        onUpdate(node.id, { responsibleColleagueIds: selected ? ids.filter((id) => id !== report.id) : [...ids, report.id] });
+                      }}
+                    >
+                      {report.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="basis-full pt-0.5">
               <label className="mb-1 inline-flex items-center gap-1 text-[11px]" style={{ color: "var(--text-secondary)" }}><StickyNote size={10} /> Notes</label>
               <textarea
@@ -1004,16 +1038,13 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlo
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
         </select>
-        <select
-          value={task.accountableDirectReportId ?? "na"}
-          onChange={(event) => onUpdate(task.id, { accountableDirectReportId: event.target.value === "na" ? null : Number(event.target.value) })}
-          className="h-7 max-w-[150px] rounded-md border px-1.5 text-[11px] font-[inherit]"
+        <span
+          className="max-w-[180px] truncate rounded border px-1.5 py-1 text-[11px]"
           style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-            aria-label={`Responsible Colleague for ${task.text}`}
+          title={taskResponsibleColleagueLabel(task, directReports)}
         >
-          <option value="na">N/A</option>
-          {directReports.map((report) => <option key={report.id} value={report.id}>{report.name}</option>)}
-        </select>
+          {taskResponsibleColleagueLabel(task, directReports)}
+        </span>
         {outlookConnected && task.dueAt && onSyncToOutlook && (
           <button
             className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
@@ -1147,7 +1178,7 @@ function CategoryCard({
   const hasMatchingItems = !query || tasks.some((t) => t.text.toLowerCase().includes(query) || t.note.toLowerCase().includes(query));
   const hasMatchingPriority = priorityFilter === "all" || tasks.some((task) => task.priority === priorityFilter);
   const hasMatchingDueRange = dueRange === "all" || tasks.some((task) => matchesDueRange(task.dueAt, dueRange));
-  const hasMatchingDirectReport = directReportFilter === "all" || tasks.some((task) => matchesDirectReport(task.accountableDirectReportId, directReportFilter));
+  const hasMatchingDirectReport = directReportFilter === "all" || tasks.some((task) => matchesDirectReport(taskResponsibleColleagueIds(task), directReportFilter));
   if ((query && !hasMatchingItems) || !hasMatchingPriority || !hasMatchingDueRange || !hasMatchingDirectReport) return null;
 
   return (
@@ -1582,7 +1613,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           if (!task) return;
-          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null, priority: task.priority, recurrence: task.recurrence, accountableDirectReportId: task.accountableDirectReportId ?? null });
+          createTaskMut.mutate({ categoryId: task.categoryId, parentId: task.parentId ?? undefined, text: task.text, sortOrder: task.sortOrder, dueAt: task.dueAt ?? null, priority: task.priority, recurrence: task.recurrence, responsibleColleagueIds: taskResponsibleColleagueIds(task) });
           toast.success(`"${text}" restored.`);
         },
       },
@@ -1608,7 +1639,7 @@ export default function Dashboard() {
         label: "Undo",
         onClick: () => {
           for (const t of doneTasks) {
-            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null, priority: t.priority, recurrence: t.recurrence, accountableDirectReportId: t.accountableDirectReportId ?? null });
+            createTaskMut.mutate({ categoryId: t.categoryId, parentId: t.parentId ?? undefined, text: t.text, sortOrder: t.sortOrder, dueAt: t.dueAt ?? null, priority: t.priority, recurrence: t.recurrence, responsibleColleagueIds: taskResponsibleColleagueIds(t) });
           }
           toast.success(`${doneTasks.length} item${doneTasks.length !== 1 ? "s" : ""} restored.`);
         },
@@ -1802,14 +1833,14 @@ export default function Dashboard() {
           name: c.name, kind: c.kind, colorIndex: c.colorIndex ?? i % 8, sortOrder: c.sortOrder ?? i, collapsed: c.collapsed ?? false,
         }));
         const parsedDirectReports = Array.isArray(parsed.directReports) ? parsed.directReports as DirectReport[] : [];
-        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: Task["priority"]; recurrence: Task["recurrence"]; accountableDirectReportIndex: number | null; done: boolean; collapsed: boolean; sortOrder: number }> = [];
+        const flatTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: Task["priority"]; recurrence: Task["recurrence"]; accountableDirectReportIndex: number | null; responsibleColleagueIndices: number[]; done: boolean; collapsed: boolean; sortOrder: number }> = [];
         if (parsed.tasks && Array.isArray(parsed.tasks)) {
           (parsed.tasks as Task[]).forEach((t, i) => {
             const catIdxReal = parsed.categories.findIndex((c: Category) => c.id === t.categoryId);
             flatTasks.push({
               tempId: `t${i}`, categoryIndex: catIdxReal >= 0 ? catIdxReal : 0,
               parentTempId: t.parentId ? `t${parsed.tasks.findIndex((pt: Task) => pt.id === t.parentId)}` : null,
-              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, priority: t.priority ?? "medium", recurrence: t.recurrence ?? "none", accountableDirectReportIndex: t.accountableDirectReportId === null || t.accountableDirectReportId === undefined ? null : parsedDirectReports.findIndex((report) => report.id === t.accountableDirectReportId), done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
+              text: t.text, note: t.note ?? "", dueAt: t.dueAt ?? null, priority: t.priority ?? "medium", recurrence: t.recurrence ?? "none", accountableDirectReportIndex: t.accountableDirectReportId === null || t.accountableDirectReportId === undefined ? null : parsedDirectReports.findIndex((report) => report.id === t.accountableDirectReportId), responsibleColleagueIndices: taskResponsibleColleagueIds(t).map((id) => parsedDirectReports.findIndex((report) => report.id === id)).filter((index) => index >= 0), done: t.done ?? false, collapsed: t.collapsed ?? false, sortOrder: t.sortOrder ?? i,
             });
           });
         }
@@ -2669,7 +2700,7 @@ export default function Dashboard() {
             {directReports.length > 0 ? (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {directReports.map((report) => {
-                  const assignedCount = tasksData.filter((task) => task.accountableDirectReportId === report.id).length;
+                  const assignedCount = tasksData.filter((task) => taskResponsibleColleagueIds(task).includes(report.id)).length;
                   return (
                     <div key={report.id} className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
                       <input

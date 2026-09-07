@@ -230,6 +230,7 @@ export const appRouter = router({
         priority: z.enum(["high", "medium", "low"]).optional(),
         recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
         accountableDirectReportId: z.number().int().nullable().optional(),
+        responsibleColleagueIds: z.array(z.number().int().positive()).max(30).optional(),
         mobileClientMutationId: z.string().trim().min(8).max(120).optional(),
       }))
       .mutation(async ({ input }) => {
@@ -250,6 +251,7 @@ export const appRouter = router({
         priority: z.enum(["high", "medium", "low"]).optional(),
         recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
         accountableDirectReportId: z.number().int().nullable().optional(),
+        responsibleColleagueIds: z.array(z.number().int().positive()).max(30).optional(),
         done: z.boolean().optional(),
         collapsed: z.boolean().optional(),
         sortOrder: z.number().int().optional(),
@@ -380,6 +382,7 @@ export const appRouter = router({
           priority: z.enum(["high", "medium", "low"]).optional().default("medium"),
           recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional().default("none"),
           accountableDirectReportIndex: z.number().int().nullable().optional().default(null),
+          responsibleColleagueIndices: z.array(z.number().int().min(0)).max(30).optional().default([]),
           done: z.boolean(),
           collapsed: z.boolean(),
           sortOrder: z.number().int(),

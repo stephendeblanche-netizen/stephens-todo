@@ -24,7 +24,7 @@ describe("offline dashboard mutations", () => {
     const next = addTemporaryTask(dashboard, { categoryId: 1, text: "Offline task", sortOrder: 1, dueAt: 1789477200000, priority: "high", recurrence: "weekly", accountableDirectReportId: 7 });
     expect(next.tasks).toHaveLength(2);
     expect(next.tasks[1].id).toBeLessThan(0);
-    expect(next.tasks[1]).toMatchObject({ dueAt: 1789477200000, priority: "high", recurrence: "weekly", accountableDirectReportId: 7 });
+    expect(next.tasks[1]).toMatchObject({ dueAt: 1789477200000, priority: "high", recurrence: "weekly", accountableDirectReportId: 7, responsibleColleagueIds: [7] });
   });
 
   it("replays queued edits and refreshes the dashboard after reconnecting", async () => {
