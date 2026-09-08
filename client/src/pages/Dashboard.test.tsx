@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
@@ -46,7 +46,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({
       categories: { list: { invalidate: vi.fn() } },
-      tasks: { listAll: { invalidate: vi.fn() } },
+      tasks: { listAll: { invalidate: vi.fn(() => Promise.resolve()) } },
       filters: { list: { invalidate: vi.fn() } },
       directReports: { list: { invalidate: vi.fn() } },
       dashboardEmailSettings: { get: { invalidate: vi.fn() } },
@@ -58,7 +58,11 @@ vi.mock("@/lib/trpc", () => ({
     },
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
-      create: { useMutation: () => ({ mutate: vi.fn() }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: fixture.taskDeleteMutate }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
+      create: { useMutation: () => ({ mutate: (input: { categoryId: number; parentId?: number; text: string; sortOrder: number }, callbacks?: { onSuccess?: (task: { id: number }) => void }) => {
+        const id = Math.max(0, ...fixture.tasks.map((task) => task.id)) + 1;
+        fixture.tasks = [...fixture.tasks, { id, categoryId: input.categoryId, parentId: input.parentId ?? null, text: input.text, note: "", dueAt: null, priority: "medium", recurrence: "none", accountableDirectReportId: null, responsibleColleagueIds: [], done: false, collapsed: false, sortOrder: input.sortOrder }];
+        callbacks?.onSuccess?.({ id });
+      } }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: fixture.taskDeleteMutate }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
     },
     filters: {
       list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
@@ -165,6 +169,19 @@ describe("Dashboard focused priority views", () => {
     ];
     renderDashboard("all");
     expect(screen.getByText("No items yet — drag a task here")).not.toBeNull();
+  });
+
+  it("opens Responsible Colleague setup immediately for a newly created portal task", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getAllByRole("button", { name: /add item/i })[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Task details for New item" })).not.toBeNull();
+    });
+    expect(screen.getByRole("group", { name: "Responsible Colleagues for New item" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Alex Morgan" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("renders empty-category, sibling-gap, and sub-task drop targets", () => {

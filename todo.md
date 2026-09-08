@@ -517,3 +517,10 @@
 - [x] Add multi-person Responsible Colleague selection, display, and filtering to the iPhone and iPad companion
 - [x] Add browser and iOS regression coverage for rendering fixes and multi-person assignment workflows
 - [x] Build and submit the native multi-person assignment update to TestFlight
+
+## Portal Task Details and iOS App Image
+- [x] Repair Responsible Colleague assignment while creating a new task in the browser portal
+- [x] Add browser regression coverage for configured portal task creation
+- [x] Create and configure a branded iOS app image asset for Stephen’s To-Do
+- [x] Validate the asset configuration in the iOS production bundle
+- [x] Publish the portal correction and submit the native app-image update to TestFlight

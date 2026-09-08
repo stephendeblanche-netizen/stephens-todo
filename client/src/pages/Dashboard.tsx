@@ -303,9 +303,11 @@ function TaskItem({
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
 }: TaskItemProps) {
+  const isNew = newTaskId === node.id;
   const [noteOpen, setNoteOpen] = useState(false);
   // Details should open only when the user asks. A due date must not expand the row after refresh.
-  const [dueOpen, setDueOpen] = useState(false);
+  // A newly added task is the exception: expose its set-up controls immediately.
+  const [dueOpen, setDueOpen] = useState(isNew);
   const [hovered, setHovered] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeOpen, setSwipeOpen] = useState(false);
@@ -318,7 +320,6 @@ function TaskItem({
     baseOffset: 0,
     currentOffset: 0,
   });
-  const isNew = newTaskId === node.id;
   const titleComposition = useComposition<HTMLInputElement>();
 
   const {
@@ -343,6 +344,7 @@ function TaskItem({
     if (isNew && textInputRef.current) {
       textInputRef.current.focus();
       textInputRef.current.select();
+      setDueOpen(true);
     }
   }, [isNew]);
 
