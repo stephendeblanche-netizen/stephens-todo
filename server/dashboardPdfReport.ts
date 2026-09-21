@@ -7,7 +7,10 @@ type SnapshotCategory = DashboardExport["categories"][number];
 
 const REPORT_MARGIN = 42;
 const HEADER_HEIGHT = 76;
-const FOOTER_RESERVE = 46;
+// Leave enough vertical room for the visible footer within PDFKit's printable
+// area. Rendering footer text below the bottom margin makes PDFKit append a
+// page automatically, which previously created one blank page per report page.
+const FOOTER_RESERVE = 72;
 const SECTION_GAP = 14;
 
 const COLORS = {
@@ -328,7 +331,7 @@ function decoratePages(doc: PDFKit.PDFDocument, reportDate: string) {
       lineBreak: false,
     });
 
-    const footerY = doc.page.height - 28;
+    const footerY = doc.page.height - REPORT_MARGIN - 16;
     doc.moveTo(REPORT_MARGIN, footerY - 6).lineTo(doc.page.width - REPORT_MARGIN, footerY - 6).lineWidth(0.6).strokeColor(COLORS.line).stroke();
     doc.fillColor(COLORS.muted).font("Helvetica").fontSize(7.1).text("Stephen's To-Do Dashboard • Confidential task summary", REPORT_MARGIN, footerY, { lineBreak: false });
     doc.text(`Page ${page + 1} of ${pageRange.count}`, REPORT_MARGIN, footerY, {

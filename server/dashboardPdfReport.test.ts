@@ -34,6 +34,49 @@ function buildSnapshot() {
   };
 }
 
+function buildPaginationSnapshot() {
+  const categoryCount = 14;
+  return {
+    categories: Array.from({ length: categoryCount }, (_, index) => ({
+      id: index + 1,
+      name: index === 0 ? "URGENT" : `Section ${index + 1}`,
+      kind: index === 0 ? "urgent" as const : "normal" as const,
+      colorIndex: index % 8,
+      sortOrder: index,
+      collapsed: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    tasks: Array.from({ length: 120 }, (_, index) => ({
+      id: index + 1,
+      categoryId: (index % categoryCount) + 1,
+      parentId: index % 7 === 1 ? index : null,
+      text: `Task ${index + 1}: detailed delivery commitment for the current workstream`,
+      note: index % 3 === 0 ? "This relevant task note adds detail about the deliverable, ownership discussion, risk and next action required before the agreed date." : "",
+      dueAt: new Date(2026, 8, 21 + (index % 21), 12).getTime(),
+      priority: index % 5 === 0 ? "high" as const : index % 3 === 0 ? "low" as const : "medium" as const,
+      recurrence: index % 9 === 0 ? "weekly" as const : "none" as const,
+      accountableDirectReportId: index % 2 === 0 ? 1 : null,
+      responsibleColleagueIds: index % 2 === 0 ? [1, 2] : [],
+      done: index % 4 === 0,
+      collapsed: false,
+      sortOrder: Math.floor(index / categoryCount),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    filters: [],
+    directReports: [
+      { id: 1, name: "Alex Morgan", sortOrder: 0, createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, name: "Jordan Lee", sortOrder: 1, createdAt: new Date(), updatedAt: new Date() },
+    ],
+    exportedAt,
+  };
+}
+
+function pdfPageCount(pdf: Buffer) {
+  return (pdf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length;
+}
+
 describe("dashboard PDF report", () => {
   it("builds a complete section-based model with hierarchy, ownership and relevant notes", () => {
     const model = buildDashboardReportModel(buildSnapshot());
@@ -74,5 +117,13 @@ describe("dashboard PDF report", () => {
 
     expect(pdf.subarray(0, 4).toString("utf8")).toBe("%PDF");
     expect(pdf.length).toBeGreaterThan(2000);
+  });
+
+  it("does not append a blank page for each populated page in a dashboard-scale report", async () => {
+    const pdf = await createDashboardPdfReport(buildPaginationSnapshot());
+
+    // This fixture produces thirteen populated pages. The prior footer placement
+    // caused PDFKit to append a duplicate set of thirteen blank pages.
+    expect(pdfPageCount(pdf)).toBe(13);
   });
 });

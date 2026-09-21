@@ -532,3 +532,8 @@
 - [x] Create a professional, section-based PDF/print report with task counts and key task information
 - [x] Include relevant task notes, hierarchy, status, priority, due date, recurrence, and Responsible Colleagues
 - [x] Add regression coverage and validate the production dashboard build
+
+## PDF Pagination Repair
+- [x] Reproduce the blank trailing-page and repeated page-number defect with dashboard-scale data
+- [x] Correct PDF page buffering, layout flow, and page numbering
+- [x] Add regression coverage and validate a multi-page PDF report
