@@ -306,6 +306,10 @@ function TaskItem({
 }: TaskItemProps) {
   const isNew = newTaskId === node.id;
   const [noteOpen, setNoteOpen] = useState(false);
+  const initialResponsibleColleagueIds = taskResponsibleColleagueIds(node);
+  const [draftPriority, setDraftPriority] = useState<Task["priority"]>(node.priority);
+  const [draftResponsibleColleagueIds, setDraftResponsibleColleagueIds] = useState<number[]>(initialResponsibleColleagueIds);
+  const draftResponsibleColleagueIdsRef = useRef<number[]>(initialResponsibleColleagueIds);
   // Details should open only when the user asks. A due date must not expand the row after refresh.
   // A newly added task is the exception: expose its set-up controls immediately.
   const [dueOpen, setDueOpen] = useState(isNew);
@@ -348,6 +352,45 @@ function TaskItem({
       setDueOpen(true);
     }
   }, [isNew]);
+
+  // Keep the compact row in sync after a server refresh, while letting a newly
+  // created task respond immediately to several setup clicks before that
+  // refresh arrives.
+  const responsibleColleagueSourceKey = initialResponsibleColleagueIds.join(",");
+  useEffect(() => {
+    setDraftPriority(node.priority);
+  }, [node.id, node.priority]);
+  useEffect(() => {
+    const sourceIds = taskResponsibleColleagueIds(node);
+    draftResponsibleColleagueIdsRef.current = sourceIds;
+    setDraftResponsibleColleagueIds(sourceIds);
+  }, [node.id, responsibleColleagueSourceKey]);
+
+  const draftResponsibleColleagueLabel = draftResponsibleColleagueIds
+    .map((id) => directReports.find((report) => report.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
+    .join(", ") || "N/A";
+
+  const handlePrioritySelect = (priority: Task["priority"]) => {
+    setDraftPriority(priority);
+    onUpdate(node.id, { priority });
+  };
+
+  const handleResponsibleColleagueToggle = (reportId: number) => {
+    const current = draftResponsibleColleagueIdsRef.current;
+    const next = current.includes(reportId)
+      ? current.filter((id) => id !== reportId)
+      : [...current, reportId];
+    draftResponsibleColleagueIdsRef.current = next;
+    setDraftResponsibleColleagueIds(next);
+    onUpdate(node.id, { responsibleColleagueIds: next });
+  };
+
+  const handleClearResponsibleColleagues = () => {
+    draftResponsibleColleagueIdsRef.current = [];
+    setDraftResponsibleColleagueIds([]);
+    onUpdate(node.id, { responsibleColleagueIds: [] });
+  };
 
   if (node.done && !showCompleted && !isDragOverlay) return null;
   if (query && !matchesSearch(node, query) && !isDragOverlay) return null;
@@ -573,7 +616,7 @@ function TaskItem({
           />
           <button
             className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-[inherit]"
-            style={{ color: priorityMeta(node.priority).color, background: "var(--page-plane)" }}
+            style={{ color: priorityMeta(draftPriority).color, background: "var(--page-plane)" }}
             title={dueOpen ? "Hide task details" : "Show task details"}
             aria-label={`Toggle details for ${node.text}`}
             aria-expanded={dueOpen}
@@ -581,7 +624,7 @@ function TaskItem({
             onClick={(event) => { event.stopPropagation(); setDueOpen((value) => !value); }}
             type="button"
           >
-            <Flag size={9} fill="currentColor" /> {priorityMeta(node.priority).label}
+            <Flag size={9} fill="currentColor" /> {priorityMeta(draftPriority).label}
           </button>
           <button
             className="mt-0.5 max-w-[140px] shrink truncate rounded border px-1 py-0.5 text-left text-[10px] font-[inherit]"
@@ -589,9 +632,9 @@ function TaskItem({
             type="button"
             onClick={(event) => { event.stopPropagation(); setDueOpen(true); }}
             aria-label={`Edit Responsible Colleagues for ${node.text}`}
-            title={taskResponsibleColleagueLabel(node, directReports)}
+            title={draftResponsibleColleagueLabel}
           >
-            {taskResponsibleColleagueLabel(node, directReports)}
+            {draftResponsibleColleagueLabel}
           </button>
 
           {/* Toolbar */}
@@ -651,7 +694,7 @@ function TaskItem({
             </DropdownMenu>
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
-              style={{ color: priorityMeta(node.priority).color, background: "transparent", border: "none" }}
+              style={{ color: priorityMeta(draftPriority).color, background: "transparent", border: "none" }}
               title={dueOpen ? "Hide task details" : "Show task details"}
               aria-label={`Toggle details for ${node.text}`}
               aria-expanded={dueOpen}
@@ -737,9 +780,9 @@ function TaskItem({
 
         {/* Task schedule and priority editor */}
         {dueOpen && (
-          <div id={`task-detail-panel-${node.id}`} role="region" aria-label={`Task details for ${node.text}`} className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+          <div id={`task-detail-panel-${node.id}`} role="region" aria-label={`Task details for ${node.text}`} className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
             <div className="basis-full flex items-center justify-between gap-2 border-b pb-1" style={{ borderColor: "var(--border-color)" }}>
-              <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Task details</span>
+              <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>{isNew ? "New task setup" : "Task details"}</span>
               <button
                 className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold transition-colors"
                 style={{ color: "var(--slot-1)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
@@ -769,23 +812,28 @@ function TaskItem({
                 Clear
               </button>
             )}
-            <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Priority</label>
-            <div className="flex items-center gap-1 rounded-md border p-0.5" style={{ borderColor: "var(--border-color)", background: "var(--page-plane)" }}>
+            <div className="basis-full">
+              <span className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Priority</span>
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`Priority for ${node.text}`}>
               {(["high", "medium", "low"] as const).map((priority) => (
                 <button
                   key={priority}
-                  className="rounded px-1.5 py-1 text-[10px] font-semibold"
+                  className="min-h-8 rounded-md border px-3 py-1.5 text-[11px] font-semibold transition-colors"
                   style={{
                     color: priorityMeta(priority).color,
-                    background: node.priority === priority ? "var(--card-surface)" : "transparent",
-                    border: "none",
+                    background: draftPriority === priority ? "var(--card-surface)" : "var(--page-plane)",
+                    borderColor: draftPriority === priority ? priorityMeta(priority).color : "var(--border-color)",
                   }}
                   type="button"
-                  onClick={() => onUpdate(node.id, { priority })}
+                  data-no-swipe
+                  aria-label={`Set priority to ${priorityMeta(priority).label} for ${node.text}`}
+                  aria-pressed={draftPriority === priority}
+                  onClick={(event) => { event.stopPropagation(); handlePrioritySelect(priority); }}
                 >
                   {priorityMeta(priority).label}
                 </button>
               ))}
+              </div>
             </div>
             <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Repeat</label>
             <select
@@ -801,30 +849,31 @@ function TaskItem({
               <option value="monthly">Monthly</option>
             </select>
             <div className="basis-full">
-              <span className="mb-1 block text-[11px]" style={{ color: "var(--text-secondary)" }}>Responsible Colleagues</span>
-              <div className="flex flex-wrap gap-1" role="group" aria-label={`Responsible Colleagues for ${node.text}`}>
+              <span className="mb-1 block text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Responsible Colleagues</span>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Responsible Colleagues for ${node.text}`}>
                 <button
-                  className="rounded-md border px-2 py-1 text-[10.5px] font-semibold"
-                  style={{ color: taskResponsibleColleagueIds(node).length === 0 ? "var(--slot-1)" : "var(--text-muted)", background: taskResponsibleColleagueIds(node).length === 0 ? "var(--card-surface)" : "var(--page-plane)", borderColor: taskResponsibleColleagueIds(node).length === 0 ? "var(--slot-1)" : "var(--border-color)" }}
+                  className="min-h-8 rounded-md border px-3 py-1.5 text-[11px] font-semibold transition-colors"
+                  style={{ color: draftResponsibleColleagueIds.length === 0 ? "var(--slot-1)" : "var(--text-muted)", background: draftResponsibleColleagueIds.length === 0 ? "var(--card-surface)" : "var(--page-plane)", borderColor: draftResponsibleColleagueIds.length === 0 ? "var(--slot-1)" : "var(--border-color)" }}
                   type="button"
-                  aria-pressed={taskResponsibleColleagueIds(node).length === 0}
-                  onClick={() => onUpdate(node.id, { responsibleColleagueIds: [] })}
+                  data-no-swipe
+                  aria-label={`Clear Responsible Colleagues for ${node.text}`}
+                  aria-pressed={draftResponsibleColleagueIds.length === 0}
+                  onClick={(event) => { event.stopPropagation(); handleClearResponsibleColleagues(); }}
                 >
                   N/A
                 </button>
                 {directReports.map((report) => {
-                  const selected = taskResponsibleColleagueIds(node).includes(report.id);
+                  const selected = draftResponsibleColleagueIds.includes(report.id);
                   return (
                     <button
                       key={report.id}
-                      className="rounded-md border px-2 py-1 text-[10.5px] font-semibold"
+                      className="min-h-8 rounded-md border px-3 py-1.5 text-[11px] font-semibold transition-colors"
                       style={{ color: selected ? "var(--slot-1)" : "var(--text-secondary)", background: selected ? "var(--card-surface)" : "var(--page-plane)", borderColor: selected ? "var(--slot-1)" : "var(--border-color)" }}
                       type="button"
+                      data-no-swipe
+                      aria-label={`${selected ? "Unassign" : "Assign"} ${report.name} ${selected ? "from" : "to"} ${node.text}`}
                       aria-pressed={selected}
-                      onClick={() => {
-                        const ids = taskResponsibleColleagueIds(node);
-                        onUpdate(node.id, { responsibleColleagueIds: selected ? ids.filter((id) => id !== report.id) : [...ids, report.id] });
-                      }}
+                      onClick={(event) => { event.stopPropagation(); handleResponsibleColleagueToggle(report.id); }}
                     >
                       {report.name}
                     </button>
@@ -1390,6 +1439,7 @@ export default function Dashboard() {
   const [outlookEmailCc, setOutlookEmailCc] = useState("");
   const [outlookEmailSubject, setOutlookEmailSubject] = useState("");
   const [outlookEmailBody, setOutlookEmailBody] = useState("");
+  const [pdfReportScope, setPdfReportScope] = useState<"all" | "high_priority">("all");
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1413,7 +1463,7 @@ export default function Dashboard() {
   const updateDirectReportMut = trpc.directReports.update.useMutation({ onSuccess: () => utils.directReports.list.invalidate() });
   const deleteDirectReportMut = trpc.directReports.delete.useMutation({ onSuccess: () => { utils.directReports.list.invalidate(); utils.tasks.listAll.invalidate(); } });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
-  const pdfReportQuery = trpc.data.pdfReport.useQuery(undefined, { enabled: false });
+  const pdfReportQuery = trpc.data.pdfReport.useQuery({ scope: pdfReportScope }, { enabled: false });
   const importMut = trpc.data.import.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
@@ -2037,13 +2087,34 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex gap-2 flex-wrap items-center">
+              <div className="flex items-center gap-1 rounded-lg border p-1" role="group" aria-label="PDF report scope" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+                <span className="px-1.5 text-[10px] font-semibold" style={{ color: "var(--text-secondary)" }}>PDF</span>
+                <button
+                  className="rounded-md px-2 py-1 text-[10.5px] font-semibold transition-colors"
+                  style={{ color: pdfReportScope === "all" ? "var(--text-primary)" : "var(--text-secondary)", background: pdfReportScope === "all" ? "var(--page-plane)" : "transparent", border: "none" }}
+                  type="button"
+                  aria-pressed={pdfReportScope === "all"}
+                  onClick={() => setPdfReportScope("all")}
+                >
+                  All tasks
+                </button>
+                <button
+                  className="rounded-md px-2 py-1 text-[10.5px] font-semibold transition-colors"
+                  style={{ color: pdfReportScope === "high_priority" ? "var(--status-critical)" : "var(--text-secondary)", background: pdfReportScope === "high_priority" ? "var(--page-plane)" : "transparent", border: "none" }}
+                  type="button"
+                  aria-pressed={pdfReportScope === "high_priority"}
+                  onClick={() => setPdfReportScope("high_priority")}
+                >
+                  High priority only
+                </button>
+              </div>
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
                 style={{ background: "var(--text-primary)", color: "var(--card-surface)", borderColor: "var(--text-primary)" }}
                 onClick={handlePdfReportDownload} type="button"
-                title="Download a professional task report as a PDF"
+                title={pdfReportScope === "high_priority" ? "Download a high-priority-only PDF task report" : "Download a professional task report as a PDF"}
               >
-                <FileText size={13} /> Download PDF report
+                <FileText size={13} /> {pdfReportScope === "high_priority" ? "Download high-priority PDF" : "Download PDF report"}
               </button>
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"

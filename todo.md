@@ -537,3 +537,9 @@
 - [x] Reproduce the blank trailing-page and repeated page-number defect with dashboard-scale data
 - [x] Correct PDF page buffering, layout flow, and page numbering
 - [x] Add regression coverage and validate a multi-page PDF report
+
+## High-Priority PDF Report and Browser Task Entry Repair
+- [x] Add a high-priority-only option to the dashboard PDF report workflow
+- [x] Apply the selected report scope consistently to the PDF download API and report layout
+- [x] Diagnose and repair browser new-task priority and Responsible Colleague controls
+- [x] Add regression coverage and validate the updated dashboard build

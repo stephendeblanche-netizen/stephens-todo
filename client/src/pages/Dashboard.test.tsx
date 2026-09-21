@@ -34,6 +34,7 @@ const fixture = vi.hoisted(() => ({
   updateEmailSettingsMutate: vi.fn(),
   syncOutlookTaskMutate: vi.fn(),
   sendOutlookEmailMutate: vi.fn(),
+  pdfReportUseQuery: vi.fn(() => ({ refetch: vi.fn() })),
   microsoftConnected: false,
   emailSettings: { id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "cron-1", enabled: true, lastSentAt: null },
 }));
@@ -91,7 +92,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     data: {
       export: { useQuery: () => ({ refetch: vi.fn() }) },
-      pdfReport: { useQuery: () => ({ refetch: vi.fn() }) },
+      pdfReport: { useQuery: fixture.pdfReportUseQuery },
       import: { useMutation: () => ({ mutate: vi.fn() }) },
     },
   },
@@ -127,6 +128,7 @@ describe("Dashboard focused priority views", () => {
     fixture.updateEmailSettingsMutate.mockReset();
     fixture.syncOutlookTaskMutate.mockReset();
     fixture.sendOutlookEmailMutate.mockReset();
+    fixture.pdfReportUseQuery.mockClear();
     fixture.microsoftConnected = false;
     fixture.filters = [
       { id: 1, name: "High priority due this week", priority: "high", dueRange: "this_week", categoryId: null, includeCompleted: false, sortOrder: 0 },
@@ -182,7 +184,37 @@ describe("Dashboard focused priority views", () => {
       expect(screen.getByRole("region", { name: "Task details for New item" })).not.toBeNull();
     });
     expect(screen.getByRole("group", { name: "Responsible Colleagues for New item" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Alex Morgan" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Assign Alex Morgan to New item" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("keeps new-task priority and Responsible Colleague choices responsive before a server refresh", async () => {
+    fixture.directReports = [{ id: 1, name: "Alex Morgan", sortOrder: 0 }, { id: 2, name: "Jordan Lee", sortOrder: 1 }];
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    await user.click(screen.getAllByRole("button", { name: /add item/i })[0]!);
+    const priorityGroup = await screen.findByRole("group", { name: "Priority for New item" });
+    const colleagueGroup = screen.getByRole("group", { name: "Responsible Colleagues for New item" });
+
+    await user.click(within(priorityGroup).getByRole("button", { name: "Set priority to High for New item" }));
+    expect(fixture.taskUpdateMutate).toHaveBeenLastCalledWith({ id: 4, priority: "high" });
+    expect(within(priorityGroup).getByRole("button", { name: "Set priority to High for New item" }).getAttribute("aria-pressed")).toBe("true");
+
+    await user.click(within(colleagueGroup).getByRole("button", { name: "Assign Alex Morgan to New item" }));
+    await user.click(within(colleagueGroup).getByRole("button", { name: "Assign Jordan Lee to New item" }));
+    expect(fixture.taskUpdateMutate).toHaveBeenNthCalledWith(2, { id: 4, responsibleColleagueIds: [1] });
+    expect(fixture.taskUpdateMutate).toHaveBeenNthCalledWith(3, { id: 4, responsibleColleagueIds: [1, 2] });
+    expect(within(colleagueGroup).getByRole("button", { name: "Unassign Jordan Lee from New item" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("switches the downloadable PDF report to high-priority-only scope", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    expect(fixture.pdfReportUseQuery).toHaveBeenLastCalledWith({ scope: "all" }, { enabled: false });
+    await user.click(screen.getByRole("button", { name: "High priority only" }));
+    expect(fixture.pdfReportUseQuery).toHaveBeenLastCalledWith({ scope: "high_priority" }, { enabled: false });
+    expect(screen.getByRole("button", { name: "Download high-priority PDF" })).not.toBeNull();
   });
 
   it("renders empty-category, sibling-gap, and sub-task drop targets", () => {
@@ -386,8 +418,8 @@ describe("Dashboard focused priority views", () => {
     expect(screen.queryByRole("region", { name: "Task details for Urgent high today" })).toBeNull();
     await user.click(screen.getAllByRole("button", { name: "Toggle details for Urgent high today" })[0]!);
     const colleagues = within(screen.getByRole("group", { name: "Responsible Colleagues for Urgent high today" }));
-    expect(colleagues.getByRole("button", { name: "Alex Morgan" }).getAttribute("aria-pressed")).toBe("true");
-    await user.click(colleagues.getByRole("button", { name: "Jordan Lee" }));
+    expect(colleagues.getByRole("button", { name: "Unassign Alex Morgan from Urgent high today" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(colleagues.getByRole("button", { name: "Assign Jordan Lee to Urgent high today" }));
     expect(fixture.taskUpdateMutate).toHaveBeenCalledWith({ id: 1, responsibleColleagueIds: [1, 2] });
   });
 

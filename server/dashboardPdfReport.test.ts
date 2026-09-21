@@ -81,6 +81,7 @@ describe("dashboard PDF report", () => {
   it("builds a complete section-based model with hierarchy, ownership and relevant notes", () => {
     const model = buildDashboardReportModel(buildSnapshot());
 
+    expect(model.scope).toBe("all");
     expect(model.summary).toEqual({ total: 3, open: 2, completed: 1, highPriorityOpen: 1, categories: 2 });
     expect(model.sections).toHaveLength(2);
     expect(model.sections[0]).toMatchObject({ total: 2, open: 1, completed: 1, highPriorityOpen: 1 });
@@ -110,6 +111,16 @@ describe("dashboard PDF report", () => {
       },
     ]);
     expect(model.sections[1]?.tasks[0]?.task.note).toBe("Prepare an options summary before the meeting.");
+  });
+
+  it("builds a focused report containing only open high-priority tasks and their sections", () => {
+    const model = buildDashboardReportModel(buildSnapshot(), "high_priority");
+
+    expect(model.scope).toBe("high_priority");
+    expect(model.summary).toEqual({ total: 1, open: 1, completed: 0, highPriorityOpen: 1, categories: 1 });
+    expect(model.sections.map((section) => section.category.name)).toEqual(["URGENT"]);
+    expect(model.sections[0]?.tasks.map((row) => row.task.text)).toEqual(["Prepare the board pack"]);
+    expect(model.sections[0]?.tasks[0]?.responsibleColleagues).toEqual(["Alex Morgan", "Jordan Lee"]);
   });
 
   it("renders a professional PDF attachment", async () => {

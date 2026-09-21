@@ -5,6 +5,8 @@ type DashboardExport = Awaited<ReturnType<typeof buildDashboardExport>>;
 type SnapshotTask = DashboardExport["tasks"][number];
 type SnapshotCategory = DashboardExport["categories"][number];
 
+export type DashboardReportScope = "all" | "high_priority";
+
 const REPORT_MARGIN = 42;
 const HEADER_HEIGHT = 76;
 // Leave enough vertical room for the visible footer within PDFKit's printable
@@ -47,6 +49,7 @@ export type DashboardReportSection = {
 
 export type DashboardReportModel = {
   generatedAt: Date;
+  scope: DashboardReportScope;
   summary: {
     total: number;
     open: number;
@@ -93,15 +96,18 @@ function sortTasks<T extends SnapshotTask>(tasks: T[]): T[] {
  * Produces a rendering-neutral report model so the PDF keeps hierarchy, notes,
  * completion state and current multi-person Responsible Colleague assignments.
  */
-export function buildDashboardReportModel(snapshot: DashboardExport): DashboardReportModel {
+export function buildDashboardReportModel(snapshot: DashboardExport, scope: DashboardReportScope = "all"): DashboardReportModel {
   const colleagueNameById = new Map(snapshot.directReports.map((report) => [report.id, report.name]));
   const tasksByCategory = new Map<number, SnapshotTask[]>();
+  const includedTasks = scope === "high_priority"
+    ? snapshot.tasks.filter((task) => task.priority === "high" && !task.done)
+    : snapshot.tasks;
 
-  for (const task of snapshot.tasks) {
+  for (const task of includedTasks) {
     tasksByCategory.set(task.categoryId, [...(tasksByCategory.get(task.categoryId) ?? []), task]);
   }
 
-  const sections = [...snapshot.categories]
+  const allSections = [...snapshot.categories]
     .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
     .map((category) => {
       const categoryTasks = sortTasks(tasksByCategory.get(category.id) ?? []);
@@ -161,17 +167,23 @@ export function buildDashboardReportModel(snapshot: DashboardExport): DashboardR
         highPriorityOpen,
       } satisfies DashboardReportSection;
     });
+  // A focused report should contain only sections with high-priority open work,
+  // while the complete report retains empty categories for a full snapshot.
+  const sections = scope === "high_priority"
+    ? allSections.filter((section) => section.total > 0)
+    : allSections;
 
-  const total = snapshot.tasks.length;
-  const completed = snapshot.tasks.filter((task) => task.done).length;
+  const total = includedTasks.length;
+  const completed = includedTasks.filter((task) => task.done).length;
   return {
     generatedAt: new Date(snapshot.exportedAt),
+    scope,
     summary: {
       total,
       completed,
       open: total - completed,
-      highPriorityOpen: snapshot.tasks.filter((task) => !task.done && task.priority === "high").length,
-      categories: snapshot.categories.length,
+      highPriorityOpen: includedTasks.filter((task) => !task.done && task.priority === "high").length,
+      categories: sections.length,
     },
     sections,
   };
@@ -318,13 +330,18 @@ function renderSection(doc: PDFKit.PDFDocument, section: DashboardReportSection)
   doc.moveDown(0.35);
 }
 
-function decoratePages(doc: PDFKit.PDFDocument, reportDate: string) {
+function decoratePages(doc: PDFKit.PDFDocument, reportDate: string, scope: DashboardReportScope) {
   const pageRange = doc.bufferedPageRange();
   for (let page = pageRange.start; page < pageRange.start + pageRange.count; page += 1) {
     doc.switchToPage(page);
     doc.rect(0, 0, doc.page.width, HEADER_HEIGHT - 16).fillColor(COLORS.ink).fill();
     doc.fillColor(COLORS.white).font("Helvetica-Bold").fontSize(10).text("STEPHEN'S TO-DO", REPORT_MARGIN, 22, { lineBreak: false });
-    doc.fillColor("#CBD5E1").font("Helvetica").fontSize(7.2).text("TASK MANAGEMENT REPORT", REPORT_MARGIN, 36, { lineBreak: false });
+    doc.fillColor("#CBD5E1").font("Helvetica").fontSize(7.2).text(
+      scope === "high_priority" ? "HIGH-PRIORITY TASK REPORT" : "TASK MANAGEMENT REPORT",
+      REPORT_MARGIN,
+      36,
+      { lineBreak: false },
+    );
     doc.fillColor("#CBD5E1").font("Helvetica").fontSize(7.2).text(reportDate, REPORT_MARGIN, 48, {
       width: doc.page.width - REPORT_MARGIN * 2,
       align: "right",
@@ -342,15 +359,17 @@ function decoratePages(doc: PDFKit.PDFDocument, reportDate: string) {
   }
 }
 
-export async function createDashboardPdfReport(snapshot: DashboardExport): Promise<Buffer> {
+export async function createDashboardPdfReport(snapshot: DashboardExport, scope: DashboardReportScope = "all"): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const model = buildDashboardReportModel(snapshot);
+    const model = buildDashboardReportModel(snapshot, scope);
     const doc = new PDFDocument({
       margin: REPORT_MARGIN,
       size: "A4",
       bufferPages: true,
       info: {
-        Title: "Stephen's To-Do Dashboard — Task Management Report",
+        Title: scope === "high_priority"
+          ? "Stephen's To-Do Dashboard — High-Priority Task Report"
+          : "Stephen's To-Do Dashboard — Task Management Report",
         Author: "Stephen's To-Do Dashboard",
         Subject: "Task summary by section",
       },
@@ -362,30 +381,48 @@ export async function createDashboardPdfReport(snapshot: DashboardExport): Promi
 
     doc.x = REPORT_MARGIN;
     doc.y = HEADER_HEIGHT;
-    doc.fillColor(COLORS.ink).font("Helvetica-Bold").fontSize(20).text("Task management report");
+    doc.fillColor(COLORS.ink).font("Helvetica-Bold").fontSize(20).text(
+      scope === "high_priority" ? "High-priority task report" : "Task management report",
+    );
     doc.moveDown(0.25);
-    doc.fillColor(COLORS.body).font("Helvetica").fontSize(9).text("A concise, section-by-section summary of current tasks, ownership and delivery commitments.");
+    doc.fillColor(COLORS.body).font("Helvetica").fontSize(9).text(
+      scope === "high_priority"
+        ? "A focused, section-by-section summary of open high-priority tasks, ownership and delivery commitments."
+        : "A concise, section-by-section summary of current tasks, ownership and delivery commitments.",
+    );
     doc.moveDown(0.95);
 
     const cardGap = 9;
     const contentWidth = doc.page.width - REPORT_MARGIN * 2;
     const cardWidth = (contentWidth - cardGap * 3) / 4;
     const cardY = doc.y;
-    drawSummaryCard(doc, REPORT_MARGIN, cardY, cardWidth, "Total tasks", model.summary.total, COLORS.blue);
+    drawSummaryCard(doc, REPORT_MARGIN, cardY, cardWidth, scope === "high_priority" ? "High-priority open" : "Total tasks", model.summary.total, COLORS.blue);
     drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap), cardY, cardWidth, "Open", model.summary.open, COLORS.blue);
     drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 2, cardY, cardWidth, "Completed", model.summary.completed, COLORS.green);
     drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 3, cardY, cardWidth, "High priority open", model.summary.highPriorityOpen, COLORS.red);
     doc.y = cardY + 69;
     doc.x = REPORT_MARGIN;
-    doc.fillColor(COLORS.muted).font("Helvetica").fontSize(8).text(`${model.summary.categories} sections • Includes task hierarchy, status, priority, due dates, recurring schedules, Responsible Colleagues and relevant notes.`);
+    doc.fillColor(COLORS.muted).font("Helvetica").fontSize(8).text(
+      scope === "high_priority"
+        ? `${model.summary.categories} sections • Includes open high-priority tasks only, with hierarchy, due dates, Responsible Colleagues and relevant notes.`
+        : `${model.summary.categories} sections • Includes task hierarchy, status, priority, due dates, recurring schedules, Responsible Colleagues and relevant notes.`,
+    );
     doc.moveDown(1.15);
 
-    for (const section of model.sections) {
-      renderSection(doc, section);
-      doc.y += SECTION_GAP;
+    if (model.sections.length === 0) {
+      doc.fillColor(COLORS.muted).font("Helvetica-Oblique").fontSize(10).text(
+        "No open high-priority tasks are currently recorded.",
+        REPORT_MARGIN,
+        doc.y + 8,
+      );
+    } else {
+      for (const section of model.sections) {
+        renderSection(doc, section);
+        doc.y += SECTION_GAP;
+      }
     }
 
-    decoratePages(doc, reportDateLabel(model.generatedAt));
+    decoratePages(doc, reportDateLabel(model.generatedAt), scope);
     doc.end();
   });
 }

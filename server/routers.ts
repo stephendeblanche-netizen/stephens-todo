@@ -364,11 +364,14 @@ export const appRouter = router({
   data: router({
     export: publicProcedure.query(async () => buildDashboardExport()),
 
-    pdfReport: publicProcedure.query(async () => {
+    pdfReport: publicProcedure
+      .input(z.object({ scope: z.enum(["all", "high_priority"]).default("all") }).optional())
+      .query(async ({ input }) => {
+      const scope = input?.scope ?? "all";
       const snapshot = await buildDashboardExport();
-      const pdf = await createDashboardPdfReport(snapshot);
+      const pdf = await createDashboardPdfReport(snapshot, scope);
       return {
-        fileName: `stephens-todo-task-report-${new Date(snapshot.exportedAt).toISOString().slice(0, 10)}.pdf`,
+        fileName: `stephens-todo-${scope === "high_priority" ? "high-priority-" : ""}task-report-${new Date(snapshot.exportedAt).toISOString().slice(0, 10)}.pdf`,
         base64: pdf.toString("base64"),
       };
     }),

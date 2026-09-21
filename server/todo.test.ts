@@ -261,6 +261,14 @@ describe("data router", () => {
     expect(result.exportedAt).toBeDefined();
   });
 
+  it("creates a high-priority-only PDF report through the scoped export API", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const result = await caller.data.pdfReport({ scope: "high_priority" });
+
+    expect(result.fileName).toMatch(/^stephens-todo-high-priority-task-report-\d{4}-\d{2}-\d{2}\.pdf$/);
+    expect(Buffer.from(result.base64, "base64").subarray(0, 4).toString("utf8")).toBe("%PDF");
+  });
+
   it("imports snapshot data", async () => {
     const caller = appRouter.createCaller(createCtx());
     const result = await caller.data.import({
