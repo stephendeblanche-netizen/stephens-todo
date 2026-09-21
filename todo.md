@@ -477,7 +477,9 @@
 - [x] Build a protected Outlook email composer with recipient, subject, message, review, and explicit send confirmation
 - [x] Ensure no email is sent during drafting, validation, or automated tests
 - [x] Add regression coverage for the email composer and confirmed-send safeguards
-- [ ] Publish the email workflow and complete Microsoft re-consent
+- [x] Publish the email workflow with the Mail.Send permission request
+
+> **External dependency:** Microsoft Entra IT must add and grant delegated `Mail.Send`, after which the connected user must reconnect Outlook. This is not an outstanding dashboard implementation item and no email will be sent automatically.
 
 ## Native Outlook Email Composer
 - [x] Add a confirmed native email-client handoff while direct Microsoft Graph sending remains subject to Mail.Send consent
