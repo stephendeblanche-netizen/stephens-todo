@@ -91,6 +91,7 @@ vi.mock("@/lib/trpc", () => ({
     },
     data: {
       export: { useQuery: () => ({ refetch: vi.fn() }) },
+      pdfReport: { useQuery: () => ({ refetch: vi.fn() }) },
       import: { useMutation: () => ({ mutate: vi.fn() }) },
     },
   },

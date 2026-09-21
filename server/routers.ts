@@ -36,6 +36,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { tasks as tasksTable } from "../drizzle/schema";
 import { getDb } from "./db";
 import { buildDashboardExport } from "./dashboardExport";
+import { createDashboardPdfReport } from "./dashboardPdfReport";
 import { microsoftRouter } from "./microsoftRouter";
 
 function cronFromSastTime(deliveryTimeSast: string) {
@@ -362,6 +363,15 @@ export const appRouter = router({
   // ---- Export / Import ----
   data: router({
     export: publicProcedure.query(async () => buildDashboardExport()),
+
+    pdfReport: publicProcedure.query(async () => {
+      const snapshot = await buildDashboardExport();
+      const pdf = await createDashboardPdfReport(snapshot);
+      return {
+        fileName: `stephens-todo-task-report-${new Date(snapshot.exportedAt).toISOString().slice(0, 10)}.pdf`,
+        base64: pdf.toString("base64"),
+      };
+    }),
 
     import: publicProcedure
       .input(z.object({

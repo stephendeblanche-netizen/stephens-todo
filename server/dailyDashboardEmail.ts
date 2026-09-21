@@ -29,8 +29,8 @@ export async function sendDailyDashboardExport(recipient: string, now = new Date
   const info = await transporter.sendMail({
     from: `Stephen's To-Do Dashboard <${ENV.gmailSmtpUser}>`,
     to: recipient,
-    subject: `Stephen's To-Do Dashboard export — ${exportDate}`,
-    text: "Attached are a readable PDF task report and the daily JSON backup of Stephen's To-Do Dashboard. Use the PDF for reading and the JSON file only to restore a dashboard snapshot through the app's Import snapshot control.",
+    subject: `Stephen's To-Do Dashboard task report — ${exportDate}`,
+    text: "Attached are the professional task management report and daily JSON backup from Stephen's To-Do Dashboard. The PDF summarises every section with task status, priority, due dates, recurrence, Responsible Colleagues and relevant notes. Use the JSON file only to restore a dashboard snapshot through the app's Import snapshot control.",
     attachments: [
       {
         filename: `stephens-todo-dashboard-report-${exportDate}.pdf`,

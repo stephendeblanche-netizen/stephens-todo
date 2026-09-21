@@ -524,3 +524,9 @@
 - [x] Create and configure a branded iOS app image asset for Stephen’s To-Do
 - [x] Validate the asset configuration in the iOS production bundle
 - [x] Publish the portal correction and submit the native app-image update to TestFlight
+
+## Professional Dashboard PDF Export
+- [x] Review the current dashboard export and print workflow
+- [x] Create a professional, section-based PDF/print report with task counts and key task information
+- [x] Include relevant task notes, hierarchy, status, priority, due date, recurrence, and Responsible Colleagues
+- [x] Add regression coverage and validate the production dashboard build

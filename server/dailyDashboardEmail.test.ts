@@ -19,13 +19,13 @@ describe("daily dashboard email", () => {
     mocks.createTransport.mockReturnValue({ sendMail: mocks.sendMail });
   });
 
-  it("sends a dated JSON snapshot attachment to the configured recipient", async () => {
+  it("sends dated PDF report and JSON snapshot attachments to the configured recipient", async () => {
     const result = await sendDailyDashboardExport("stephend@nutun.com", new Date("2026-08-14T17:00:00.000Z"));
 
     expect(mocks.createTransport).toHaveBeenCalledWith(expect.objectContaining({ host: "smtp.gmail.com", port: 465, secure: true }));
     expect(mocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
       to: "stephend@nutun.com",
-      subject: "Stephen's To-Do Dashboard export — 2026-08-14",
+      subject: "Stephen's To-Do Dashboard task report — 2026-08-14",
       attachments: [
         expect.objectContaining({ filename: "stephens-todo-dashboard-report-2026-08-14.pdf", contentType: "application/pdf" }),
         expect.objectContaining({ filename: "stephens-todo-dashboard-2026-08-14.json", contentType: "application/json" }),

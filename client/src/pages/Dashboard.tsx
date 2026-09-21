@@ -57,6 +57,7 @@ import {
   Sun,
   Trash2,
   FileDown,
+  FileText,
   FileUp,
   StickyNote,
   Repeat2,
@@ -1412,6 +1413,7 @@ export default function Dashboard() {
   const updateDirectReportMut = trpc.directReports.update.useMutation({ onSuccess: () => utils.directReports.list.invalidate() });
   const deleteDirectReportMut = trpc.directReports.delete.useMutation({ onSuccess: () => { utils.directReports.list.invalidate(); utils.tasks.listAll.invalidate(); } });
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
+  const pdfReportQuery = trpc.data.pdfReport.useQuery(undefined, { enabled: false });
   const importMut = trpc.data.import.useMutation({
     onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
@@ -1823,6 +1825,23 @@ export default function Dashboard() {
     a.click(); URL.revokeObjectURL(url);
   }, [exportQuery]);
 
+  const handlePdfReportDownload = useCallback(async () => {
+    const result = await pdfReportQuery.refetch();
+    if (!result.data) {
+      toast.error("Could not prepare the PDF report.");
+      return;
+    }
+    const decoded = window.atob(result.data.base64);
+    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.data.fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [pdfReportQuery]);
+
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2020,12 +2039,21 @@ export default function Dashboard() {
             <div className="flex gap-2 flex-wrap items-center">
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                style={{ background: "var(--text-primary)", color: "var(--card-surface)", borderColor: "var(--text-primary)" }}
+                onClick={handlePdfReportDownload} type="button"
+                title="Download a professional task report as a PDF"
+              >
+                <FileText size={13} /> Download PDF report
+              </button>
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
                 style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-secondary)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-color)"; }}
                 onClick={handleExport} type="button"
+                title="Download a JSON backup for restoring the dashboard"
               >
-                <FileDown size={13} /> Export snapshot
+                <FileDown size={13} /> Export backup
               </button>
               <label
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
