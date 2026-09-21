@@ -40,6 +40,10 @@ vi.mock("./db", () => ({
   getDb: vi.fn().mockResolvedValue(null),
   getDashboardEmailSchedule: vi.fn().mockResolvedValue({ id: 1, sender: "stephen.deblanche@gmail.com", recipient: "stephend@nutun.com", deliveryTimeSast: "19:00", scheduleCronTaskUid: "schedule-uid", enabled: true, lastSentAt: null }),
   updateDashboardEmailSchedule: vi.fn().mockResolvedValue(undefined),
+  getAllTaskAttachments: vi.fn().mockResolvedValue([
+    { id: 1, taskId: 1, fileName: "Brief.pdf", storageKey: "task-attachments/1/brief.pdf", contentType: "application/pdf", sizeBytes: 2048, createdAt: new Date() },
+  ]),
+  deleteTaskAttachment: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./_core/heartbeat", () => ({
@@ -258,7 +262,16 @@ describe("data router", () => {
     expect(result.categories).toHaveLength(2);
     expect(result.tasks).toHaveLength(2);
     expect(result.directReports[0]?.name).toBe("Alex Morgan");
+    expect(result.attachments[0]?.fileName).toBe("Brief.pdf");
     expect(result.exportedAt).toBeDefined();
+  });
+
+  it("lists and removes task attachment metadata", async () => {
+    const caller = appRouter.createCaller(createCtx());
+    const attachments = await caller.taskAttachments.listAll();
+    const result = await caller.taskAttachments.delete({ id: 1 });
+    expect(attachments[0]?.fileName).toBe("Brief.pdf");
+    expect(result.success).toBe(true);
   });
 
   it("creates a high-priority-only PDF report through the scoped export API", async () => {

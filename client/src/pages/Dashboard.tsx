@@ -29,7 +29,8 @@ import { buildBulkCategoryMoveUpdates, buildBulkIndentUpdates } from "@/lib/task
 import { useComposition } from "@/hooks/useComposition";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
-import type { Category, DirectReport, SavedFilter, Task as DatabaseTask } from "../../../drizzle/schema";
+import { ComplexTaskDialog, type ComplexTaskInput } from "@/components/ComplexTaskDialog";
+import type { Category, DirectReport, SavedFilter, Task as DatabaseTask, TaskAttachment } from "../../../drizzle/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,6 +68,7 @@ import {
   Save,
   Send,
   X,
+  Paperclip,
 } from "lucide-react";
 import {
   DndContext,
@@ -109,6 +111,15 @@ const PRIORITY_META = {
 } as const;
 
 type Task = DatabaseTask & { responsibleColleagueIds?: number[] };
+
+function attachmentUrl(attachment: TaskAttachment) {
+  return `/manus-storage/${attachment.storageKey}`;
+}
+
+function attachmentSizeLabel(sizeBytes: number) {
+  if (sizeBytes < 1024 * 1024) return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function taskResponsibleColleagueIds(task: Task): number[] {
   return task.responsibleColleagueIds ?? (task.accountableDirectReportId === null ? [] : [task.accountableDirectReportId]);
@@ -283,6 +294,7 @@ interface TaskItemProps {
   directReports: DirectReport[];
   allCatTasks: Task[];
   allTasks: Task[];
+  attachments: TaskAttachment[];
   categories: Category[];
   onUpdate: (id: number, data: Partial<Task>) => void;
   onDelete: (id: number, text: string) => void;
@@ -290,6 +302,7 @@ interface TaskItemProps {
   onAddChild: (parentId: number, categoryId: number) => void;
   onMoveTask: (id: number, destination: TaskDropDestination) => void;
   onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
+  onDeleteAttachment: (id: number) => void;
   isSelected: boolean;
   onToggleSelection: (id: number) => void;
   newTaskId?: number | null;
@@ -299,7 +312,7 @@ interface TaskItemProps {
 
 function TaskItem({
   node, categoryId, depth, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, allCatTasks,
-  allTasks, categories, onUpdate, onDelete, onSwipeDelete, onAddChild, onMoveTask, onKeyboardMove,
+  allTasks, attachments, categories, onUpdate, onDelete, onSwipeDelete, onAddChild, onMoveTask, onKeyboardMove, onDeleteAttachment,
   isSelected, onToggleSelection,
   newTaskId, onNewTaskCommitted,
   isDragOverlay = false,
@@ -370,6 +383,7 @@ function TaskItem({
     .map((id) => directReports.find((report) => report.id === id)?.name)
     .filter((name): name is string => Boolean(name))
     .join(", ") || "N/A";
+  const taskAttachments = attachments.filter((attachment) => attachment.taskId === node.id);
 
   const handlePrioritySelect = (priority: Task["priority"]) => {
     setDraftPriority(priority);
@@ -636,6 +650,17 @@ function TaskItem({
           >
             {draftResponsibleColleagueLabel}
           </button>
+          {taskAttachments.length > 0 && (
+            <button
+              className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold"
+              style={{ color: "var(--slot-1)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+              type="button"
+              onClick={(event) => { event.stopPropagation(); setDueOpen(true); }}
+              aria-label={`Show ${taskAttachments.length} attachment${taskAttachments.length === 1 ? "" : "s"} for ${node.text}`}
+            >
+              <Paperclip size={10} /> {taskAttachments.length}
+            </button>
+          )}
 
           {/* Toolbar */}
           <span className="task-toolbar flex items-center gap-0.5 flex-shrink-0 transition-opacity duration-100" style={{ opacity: hovered ? 1 : 0 }}>
@@ -893,6 +918,21 @@ function TaskItem({
                 aria-label={`Notes in task details for ${node.text}`}
               />
             </div>
+            {taskAttachments.length > 0 && (
+              <div className="basis-full pt-0.5" role="region" aria-label={`Attachments for ${node.text}`}>
+                <span className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}><Paperclip size={11} /> Attachments</span>
+                <div className="space-y-1">
+                  {taskAttachments.map((attachment) => (
+                    <div key={attachment.id} className="flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
+                      <Paperclip size={11} style={{ color: "var(--slot-1)" }} />
+                      <a className="min-w-0 flex-1 truncate text-[11px] font-semibold underline-offset-2 hover:underline" style={{ color: "var(--slot-1)" }} href={attachmentUrl(attachment)} target="_blank" rel="noreferrer">{attachment.fileName}</a>
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{attachmentSizeLabel(attachment.sizeBytes)}</span>
+                      <button className="rounded px-1 py-0.5 text-[10px] font-semibold" style={{ color: "var(--status-critical)", background: "transparent", border: "none" }} type="button" onClick={() => onDeleteAttachment(attachment.id)} aria-label={`Remove attachment ${attachment.fileName}`}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -967,6 +1007,7 @@ function TaskItem({
                     directReports={directReports}
                     allCatTasks={allCatTasks}
                     allTasks={allTasks}
+                    attachments={attachments}
                     categories={categories}
                     onUpdate={onUpdate}
                     onDelete={onDelete}
@@ -974,6 +1015,7 @@ function TaskItem({
                     onAddChild={onAddChild}
                     onMoveTask={onMoveTask}
                     onKeyboardMove={onKeyboardMove}
+                    onDeleteAttachment={onDeleteAttachment}
                     isSelected={isSelected}
                     onToggleSelection={onToggleSelection}
                     newTaskId={newTaskId}
@@ -1176,6 +1218,7 @@ interface CategoryCardProps {
   directReports: DirectReport[];
   categories: Category[];
   allTasks: Task[];
+  attachments: TaskAttachment[];
   onUpdateCat: (id: number, data: Partial<Category>) => void;
   onDeleteCat: (id: number, name: string) => void;
   onUpdateTask: (id: number, data: Partial<Task>) => void;
@@ -1184,6 +1227,7 @@ interface CategoryCardProps {
   onAddTask: (catId: number, parentId?: number) => void;
   onMoveTask: (id: number, destination: TaskDropDestination) => void;
   onKeyboardMove: (id: number, direction: TaskMovementDirection) => void;
+  onDeleteAttachment: (id: number) => void;
   selectedTaskIds: Set<number>;
   onToggleSelection: (id: number) => void;
   onClearCompleted: (catId: number) => void;
@@ -1193,7 +1237,7 @@ interface CategoryCardProps {
 
 function CategoryCard({
   cat, tasks, query, showCompleted, priorityFilter, dueRange, directReportFilter, directReports, categories, allTasks,
-  onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onMoveTask, onKeyboardMove, selectedTaskIds, onToggleSelection, onClearCompleted,
+  attachments, onUpdateCat, onDeleteCat, onUpdateTask, onDeleteTask, onSwipeDelete, onAddTask, onMoveTask, onKeyboardMove, onDeleteAttachment, selectedTaskIds, onToggleSelection, onClearCompleted,
   newTaskId, onNewTaskCommitted,
 }: CategoryCardProps) {
   const tree = useMemo(() => buildTree(tasks), [tasks]);
@@ -1340,6 +1384,7 @@ function CategoryCard({
                     directReports={directReports}
                     allCatTasks={tasks}
                     allTasks={allTasks}
+                    attachments={attachments}
                     categories={categories}
                     onUpdate={onUpdateTask}
                     onDelete={onDeleteTask}
@@ -1347,6 +1392,7 @@ function CategoryCard({
                     onAddChild={(parentId, catId) => onAddTask(catId, parentId)}
                     onMoveTask={onMoveTask}
                     onKeyboardMove={onKeyboardMove}
+                    onDeleteAttachment={onDeleteAttachment}
                     isSelected={selectedTaskIds.has(node.id)}
                     onToggleSelection={onToggleSelection}
                     newTaskId={newTaskId}
@@ -1399,6 +1445,7 @@ export default function Dashboard() {
 
   const { data: categoriesData = [], isLoading: catsLoading } = trpc.categories.list.useQuery();
   const { data: tasksData = [], isLoading: tasksLoading } = trpc.tasks.listAll.useQuery();
+  const { data: taskAttachments = [] } = trpc.taskAttachments.listAll.useQuery();
   const { data: savedFilters = [] } = trpc.filters.list.useQuery();
   const { data: directReports = [] } = trpc.directReports.list.useQuery();
   const emailSettingsQuery = trpc.dashboardEmailSettings.get.useQuery(undefined, { enabled: canManageEmailSettings });
@@ -1440,6 +1487,8 @@ export default function Dashboard() {
   const [outlookEmailSubject, setOutlookEmailSubject] = useState("");
   const [outlookEmailBody, setOutlookEmailBody] = useState("");
   const [pdfReportScope, setPdfReportScope] = useState<"all" | "high_priority">("all");
+  const [showComplexTaskForm, setShowComplexTaskForm] = useState(false);
+  const [savingComplexTask, setSavingComplexTask] = useState(false);
   const dragActivatorRef = useRef<"pointer" | "touch">("pointer");
 
   const createCatMut = trpc.categories.create.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1453,6 +1502,7 @@ export default function Dashboard() {
   const createTaskMut = trpc.tasks.create.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const updateTaskMut = trpc.tasks.update.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const deleteTaskMut = trpc.tasks.delete.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
+  const deleteTaskAttachmentMut = trpc.taskAttachments.delete.useMutation({ onSuccess: () => utils.taskAttachments.listAll.invalidate() });
   const clearCompletedMut = trpc.tasks.clearCompleted.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderTaskMut = trpc.tasks.reorder.useMutation({ onSuccess: () => utils.tasks.listAll.invalidate() });
   const reorderCatMut = trpc.categories.reorder.useMutation({ onSuccess: () => utils.categories.list.invalidate() });
@@ -1465,7 +1515,7 @@ export default function Dashboard() {
   const exportQuery = trpc.data.export.useQuery(undefined, { enabled: false });
   const pdfReportQuery = trpc.data.pdfReport.useQuery({ scope: pdfReportScope }, { enabled: false });
   const importMut = trpc.data.import.useMutation({
-    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); toast.success("Snapshot imported successfully"); },
+    onSuccess: () => { utils.categories.list.invalidate(); utils.tasks.listAll.invalidate(); utils.filters.list.invalidate(); utils.directReports.list.invalidate(); utils.taskAttachments.listAll.invalidate(); toast.success("Snapshot imported successfully"); },
     onError: () => toast.error("Could not import — is this a valid dashboard export?"),
   });
   const updateEmailSettingsMut = trpc.dashboardEmailSettings.update.useMutation({
@@ -1715,6 +1765,41 @@ export default function Dashboard() {
     );
   }, [createTaskMut, tasksData, utils]);
 
+  const uploadTaskAttachment = useCallback(async (taskId: number, file: File) => {
+    const response = await fetch(`/api/tasks/${taskId}/attachments`, {
+      method: "POST",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) throw new Error(payload.error || `Could not upload ${file.name}.`);
+  }, []);
+
+  const handleCreateComplexTask = useCallback((task: ComplexTaskInput, attachments: File[]) => {
+    setSavingComplexTask(true);
+    createTaskMut.mutate(task, {
+      onSuccess: async ({ id }) => {
+        const results = await Promise.allSettled(attachments.map((file) => uploadTaskAttachment(id, file)));
+        await Promise.all([utils.tasks.listAll.invalidate(), utils.taskAttachments.listAll.invalidate()]);
+        setSavingComplexTask(false);
+        setShowComplexTaskForm(false);
+        const failedUploads = results.filter((result) => result.status === "rejected");
+        if (failedUploads.length > 0) {
+          toast.error(`Task created, but ${failedUploads.length} attachment${failedUploads.length === 1 ? "" : "s"} could not be saved.`);
+        } else {
+          toast.success(attachments.length > 0 ? `Task created with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}.` : "Detailed task created.");
+        }
+      },
+      onError: (error) => {
+        setSavingComplexTask(false);
+        toast.error(error.message || "Could not create the detailed task.");
+      },
+    });
+  }, [createTaskMut, uploadTaskAttachment, utils]);
+
   const handleMoveTask = useCallback((id: number, destination: TaskDropDestination) => {
     const task = tasksData.find((candidate) => candidate.id === id);
     if (!task) return;
@@ -1927,7 +2012,18 @@ export default function Dashboard() {
             })).map((filter) => ({ ...filter, categoryIndex: filter.categoryIndex < 0 ? null : filter.categoryIndex }))
           : undefined;
         const importedDirectReports = parsedDirectReports.map((report, index) => ({ name: report.name, sortOrder: report.sortOrder ?? index }));
-        importMut.mutate({ categories: cats, tasks: normalizedTasks, ...(importedFilters ? { filters: importedFilters } : {}), ...(Array.isArray(parsed.directReports) ? { directReports: importedDirectReports } : {}) });
+        const importedAttachments = Array.isArray(parsed.attachments) && Array.isArray(parsed.tasks)
+          ? (parsed.attachments as Array<Pick<TaskAttachment, "taskId" | "fileName" | "storageKey" | "contentType" | "sizeBytes">>)
+              .map((attachment) => ({
+                tempTaskId: `t${(parsed.tasks as Task[]).findIndex((task) => task.id === attachment.taskId)}`,
+                fileName: attachment.fileName,
+                storageKey: attachment.storageKey,
+                contentType: attachment.contentType,
+                sizeBytes: attachment.sizeBytes,
+              }))
+              .filter((attachment) => attachment.tempTaskId !== "t-1")
+          : undefined;
+        importMut.mutate({ categories: cats, tasks: normalizedTasks, ...(importedFilters ? { filters: importedFilters } : {}), ...(Array.isArray(parsed.directReports) ? { directReports: importedDirectReports } : {}), ...(importedAttachments ? { attachments: importedAttachments } : {}) });
       } catch { toast.error("Could not read that file — is it a dashboard export?"); }
     };
     reader.readAsText(file);
@@ -2087,6 +2183,15 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex gap-2 flex-wrap items-center">
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                style={{ background: "var(--slot-1)", color: "white", borderColor: "var(--slot-1)" }}
+                onClick={() => setShowComplexTaskForm(true)}
+                type="button"
+                title="Open the full-screen form for a detailed task with attachments"
+              >
+                <Plus size={13} /> Detailed task
+              </button>
               <div className="flex items-center gap-1 rounded-lg border p-1" role="group" aria-label="PDF report scope" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
                 <span className="px-1.5 text-[10px] font-semibold" style={{ color: "var(--text-secondary)" }}>PDF</span>
                 <button
@@ -2756,6 +2861,7 @@ export default function Dashboard() {
                     directReports={directReports}
                     categories={categoriesData}
                     allTasks={tasksData}
+                    attachments={taskAttachments}
                     onUpdateCat={handleUpdateCat}
                     onDeleteCat={handleDeleteCat}
                     onUpdateTask={handleUpdateTask}
@@ -2764,6 +2870,7 @@ export default function Dashboard() {
                     onAddTask={handleAddTask}
                     onMoveTask={handleMoveTask}
                     onKeyboardMove={handleKeyboardMoveTask}
+                    onDeleteAttachment={(id) => deleteTaskAttachmentMut.mutate({ id })}
                     selectedTaskIds={selectedTaskIds}
                     onToggleSelection={handleToggleTaskSelection}
                     onClearCompleted={handleClearCompleted}
@@ -2852,6 +2959,16 @@ export default function Dashboard() {
             </div>
           )}
         </DragOverlay>
+
+        <ComplexTaskDialog
+          open={showComplexTaskForm}
+          categories={categoriesData}
+          tasks={tasksData}
+          directReports={directReports}
+          saving={savingComplexTask}
+          onOpenChange={setShowComplexTaskForm}
+          onSave={handleCreateComplexTask}
+        />
 
         <SwipeDeleteConfirmationDialog
           pendingDeletion={pendingSwipeDelete}

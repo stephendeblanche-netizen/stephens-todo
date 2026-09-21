@@ -30,6 +30,8 @@ import {
   registerMobilePushDevice,
   updateMobileReminderSchedule,
   getTaskByMobileClientMutationId,
+  deleteTaskAttachment,
+  getAllTaskAttachments,
 } from "./db";
 import { cascadeCategoryId, getDescendantIds } from "./db";
 import { eq, and, isNull } from "drizzle-orm";
@@ -215,6 +217,17 @@ export const appRouter = router({
       }),
   }),
 
+  // ---- Task attachments ----
+  taskAttachments: router({
+    listAll: publicProcedure.query(async () => getAllTaskAttachments()),
+    delete: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteTaskAttachment(input.id);
+        return { success: true };
+      }),
+  }),
+
   // ---- Tasks ----
   tasks: router({
     listAll: publicProcedure.query(async () => {
@@ -226,6 +239,7 @@ export const appRouter = router({
         categoryId: z.number().int(),
         parentId: z.number().int().optional(),
         text: z.string().default("New item"),
+        note: z.string().max(2000).optional(),
         sortOrder: z.number().int().default(0),
         dueAt: z.number().int().nullable().optional(),
         priority: z.enum(["high", "medium", "low"]).optional(),
@@ -412,9 +426,16 @@ export const appRouter = router({
           name: z.string().min(1).max(120),
           sortOrder: z.number().int(),
         })).optional(),
+        attachments: z.array(z.object({
+          tempTaskId: z.string(),
+          fileName: z.string().trim().min(1).max(255),
+          storageKey: z.string().trim().min(1).max(512),
+          contentType: z.string().trim().min(1).max(160),
+          sizeBytes: z.number().int().min(0).max(50 * 1024 * 1024),
+        })).optional(),
       }))
       .mutation(async ({ input }) => {
-        await replaceAllData(input.categories, input.tasks, input.filters, input.directReports);
+        await replaceAllData(input.categories, input.tasks, input.filters, input.directReports, input.attachments);
         return { success: true };
       }),
   }),

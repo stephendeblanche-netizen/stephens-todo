@@ -186,6 +186,24 @@ export const tasks = mysqlTable("tasks", {
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
 
+// Attachment metadata is durable, while the actual bytes are stored in the
+// project's protected object storage. Keeping only the storage key here avoids
+// database bloat and makes each attachment available across devices.
+export const taskAttachments = mysqlTable("task_attachments", {
+  id: int("id").autoincrement().primaryKey(),
+  taskId: int("task_id").notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  storageKey: varchar("storage_key", { length: 512 }).notNull(),
+  contentType: varchar("content_type", { length: 160 }).default("application/octet-stream").notNull(),
+  sizeBytes: int("size_bytes").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("task_attachments_task_idx").on(table.taskId),
+  uniqueIndex("task_attachments_storage_key_uidx").on(table.storageKey),
+]);
+
+export type TaskAttachment = typeof taskAttachments.$inferSelect;
+
 // A task can be assigned to one or more Responsible Colleagues. The legacy
 // accountableDirectReportId remains as the compatibility primary assignment.
 export const taskResponsibleColleagues = mysqlTable("task_responsible_colleagues", {

@@ -31,6 +31,9 @@ const fixture = vi.hoisted(() => ({
   taskDeleteMutate: vi.fn(),
   reorderTaskMutate: vi.fn(),
   createDirectReportMutate: vi.fn(),
+  createTaskMutate: vi.fn(),
+  taskAttachments: [] as Array<{ id: number; taskId: number; fileName: string; storageKey: string; contentType: string; sizeBytes: number }>,
+  deleteTaskAttachmentMutate: vi.fn(),
   updateEmailSettingsMutate: vi.fn(),
   syncOutlookTaskMutate: vi.fn(),
   sendOutlookEmailMutate: vi.fn(),
@@ -50,6 +53,7 @@ vi.mock("@/lib/trpc", () => ({
       tasks: { listAll: { invalidate: vi.fn(() => Promise.resolve()) } },
       filters: { list: { invalidate: vi.fn() } },
       directReports: { list: { invalidate: vi.fn() } },
+      taskAttachments: { listAll: { invalidate: vi.fn() } },
       dashboardEmailSettings: { get: { invalidate: vi.fn() } },
       microsoft: { status: { invalidate: vi.fn() }, calendarEvents: { invalidate: vi.fn() }, inbox: { invalidate: vi.fn() } },
     }),
@@ -60,10 +64,15 @@ vi.mock("@/lib/trpc", () => ({
     tasks: {
       listAll: { useQuery: () => ({ data: fixture.tasks, isLoading: false }) },
       create: { useMutation: () => ({ mutate: (input: { categoryId: number; parentId?: number; text: string; sortOrder: number }, callbacks?: { onSuccess?: (task: { id: number }) => void }) => {
+        fixture.createTaskMutate(input, callbacks);
         const id = Math.max(0, ...fixture.tasks.map((task) => task.id)) + 1;
         fixture.tasks = [...fixture.tasks, { id, categoryId: input.categoryId, parentId: input.parentId ?? null, text: input.text, note: "", dueAt: null, priority: "medium", recurrence: "none", accountableDirectReportId: null, responsibleColleagueIds: [], done: false, collapsed: false, sortOrder: input.sortOrder }];
         callbacks?.onSuccess?.({ id });
       } }) }, update: { useMutation: () => ({ mutate: fixture.taskUpdateMutate }) }, delete: { useMutation: () => ({ mutate: fixture.taskDeleteMutate }) }, clearCompleted: { useMutation: () => ({ mutate: vi.fn() }) }, reorder: { useMutation: () => ({ mutate: fixture.reorderTaskMutate }) },
+    },
+    taskAttachments: {
+      listAll: { useQuery: () => ({ data: fixture.taskAttachments, isLoading: false }) },
+      delete: { useMutation: () => ({ mutate: fixture.deleteTaskAttachmentMutate }) },
     },
     filters: {
       list: { useQuery: () => ({ data: fixture.filters, isLoading: false }) },
@@ -125,6 +134,9 @@ describe("Dashboard focused priority views", () => {
     fixture.taskDeleteMutate.mockReset();
     fixture.reorderTaskMutate.mockReset();
     fixture.createDirectReportMutate.mockReset();
+    fixture.createTaskMutate.mockReset();
+    fixture.deleteTaskAttachmentMutate.mockReset();
+    fixture.taskAttachments = [];
     fixture.updateEmailSettingsMutate.mockReset();
     fixture.syncOutlookTaskMutate.mockReset();
     fixture.sendOutlookEmailMutate.mockReset();
@@ -215,6 +227,42 @@ describe("Dashboard focused priority views", () => {
     await user.click(screen.getByRole("button", { name: "High priority only" }));
     expect(fixture.pdfReportUseQuery).toHaveBeenLastCalledWith({ scope: "high_priority" }, { enabled: false });
     expect(screen.getByRole("button", { name: "Download high-priority PDF" })).not.toBeNull();
+  });
+
+  it("captures a detailed task with scheduling, ownership and notes in the full-screen form", async () => {
+    const user = userEvent.setup();
+    fixture.directReports = [{ id: 1, name: "Alex Morgan", sortOrder: 0 }, { id: 2, name: "Jordan Lee", sortOrder: 1 }];
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("button", { name: /detailed task/i }));
+    expect(screen.getByRole("dialog", { name: "Create a detailed task" })).not.toBeNull();
+    await user.type(screen.getByRole("textbox", { name: "Detailed task title" }), "Prepare board decision pack");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Detailed task category" }), "2");
+    await user.click(within(screen.getByRole("group", { name: "Detailed task priority" })).getByRole("button", { name: "High" }));
+    await user.click(within(screen.getByRole("group", { name: "Detailed task Responsible Colleagues" })).getByRole("button", { name: "Alex Morgan" }));
+    await user.type(screen.getByRole("textbox", { name: "Detailed task notes" }), "Include latest operating results and risks.");
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => expect(fixture.createTaskMutate).toHaveBeenCalled());
+    expect(fixture.createTaskMutate).toHaveBeenLastCalledWith(expect.objectContaining({
+      categoryId: 2,
+      text: "Prepare board decision pack",
+      priority: "high",
+      responsibleColleagueIds: [1],
+      note: "Include latest operating results and risks.",
+    }), expect.any(Object));
+  });
+
+  it("shows task attachments in details and can remove their metadata", async () => {
+    const user = userEvent.setup();
+    fixture.taskAttachments = [{ id: 7, taskId: 1, fileName: "Board-pack.pdf", storageKey: "task-attachments/1/board-pack.pdf", contentType: "application/pdf", sizeBytes: 15360 }];
+    renderDashboard("all");
+
+    await user.click(screen.getByRole("button", { name: "Show 1 attachment for Urgent high today" }));
+    const attachments = screen.getByRole("region", { name: "Attachments for Urgent high today" });
+    expect(within(attachments).getByRole("link", { name: "Board-pack.pdf" }).getAttribute("href")).toBe("/manus-storage/task-attachments/1/board-pack.pdf");
+    await user.click(within(attachments).getByRole("button", { name: "Remove attachment Board-pack.pdf" }));
+    expect(fixture.deleteTaskAttachmentMutate).toHaveBeenCalledWith({ id: 7 });
   });
 
   it("renders empty-category, sibling-gap, and sub-task drop targets", () => {

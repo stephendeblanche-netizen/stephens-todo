@@ -10,6 +10,7 @@ import { registerDailyDashboardEmailRoute } from "../dailyDashboardEmail";
 import { registerMobileApi } from "../mobileApi";
 import { registerMobileReminderRoute } from "../mobileReminders";
 import { registerMicrosoftOAuthRoutes } from "../microsoftOAuthRoutes";
+import { registerTaskAttachmentRoutes } from "../taskAttachmentRoutes";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -43,6 +44,7 @@ async function startServer() {
   registerDailyDashboardEmailRoute(app);
   registerMobileReminderRoute(app);
   registerMicrosoftOAuthRoutes(app);
+  registerTaskAttachmentRoutes(app);
   registerMobileApi(app);
   // tRPC API
   app.use(

@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, microsoftConnections, microsoftEmailImports, microsoftTaskEvents, mobilePushDevices, mobileReminderSchedules, savedFilters, taskResponsibleColleagues, tasks, users } from "../drizzle/schema";
+import { DashboardEmailSchedule, InsertUser, MobileReminderSchedule, categories, dashboardEmailSchedules, directReports, microsoftConnections, microsoftEmailImports, microsoftTaskEvents, mobilePushDevices, mobileReminderSchedules, savedFilters, taskAttachments, taskResponsibleColleagues, tasks, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { seedIfEmpty } from "./seed";
 import { nextRecurringDueAt, type TaskRecurrence } from "../shared/taskSchedule";
@@ -89,6 +89,9 @@ export async function deleteCategory(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const categoryTasks = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.categoryId, id));
+  if (categoryTasks.length > 0) {
+    await db.delete(taskAttachments).where(inArray(taskAttachments.taskId, categoryTasks.map((task) => task.id)));
+  }
   for (const task of categoryTasks) await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, task.id));
   // Delete all tasks in this category first.
   await db.delete(tasks).where(eq(tasks.categoryId, id));
@@ -353,14 +356,14 @@ export async function getTaskById(id: number) {
   return (await attachResponsibleColleagues(result))[0];
 }
 
-export async function createTask(data: { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; responsibleColleagueIds?: number[]; mobileClientMutationId?: string }) {
+export async function createTask(data: { categoryId: number; parentId?: number; text: string; note?: string; sortOrder: number; dueAt?: number | null; priority?: "high" | "medium" | "low"; recurrence?: TaskRecurrence; accountableDirectReportId?: number | null; responsibleColleagueIds?: number[]; mobileClientMutationId?: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tasks).values({
     categoryId: data.categoryId,
     parentId: data.parentId,
     text: data.text,
-    note: "",
+    note: data.note ?? "",
     dueAt: data.dueAt ?? null,
     priority: data.priority ?? "medium",
     accountableDirectReportId: data.responsibleColleagueIds?.[0] ?? data.accountableDirectReportId ?? null,
@@ -414,8 +417,39 @@ export async function deleteTask(id: number) {
   for (const child of children) {
     await deleteTask(child.id);
   }
+  await db.delete(taskAttachments).where(eq(taskAttachments.taskId, id));
   await db.delete(taskResponsibleColleagues).where(eq(taskResponsibleColleagues.taskId, id));
   await db.delete(tasks).where(eq(tasks.id, id));
+}
+
+// ---- Task attachments ----
+
+export async function getAllTaskAttachments() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(taskAttachments).orderBy(asc(taskAttachments.taskId), asc(taskAttachments.createdAt), asc(taskAttachments.id));
+}
+
+export async function createTaskAttachment(data: {
+  taskId: number;
+  fileName: string;
+  storageKey: string;
+  contentType: string;
+  sizeBytes: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(taskAttachments).values(data);
+  const id = (result as unknown as { insertId: number }).insertId;
+  const [attachment] = await db.select().from(taskAttachments).where(eq(taskAttachments.id, id)).limit(1);
+  if (!attachment) throw new Error("Could not retrieve the saved task attachment");
+  return attachment;
+}
+
+export async function deleteTaskAttachment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(taskAttachments).where(eq(taskAttachments.id, id));
 }
 
 // Cascade categoryId update to all descendants of a task
@@ -456,11 +490,13 @@ export async function replaceAllData(
   newTasks: Array<{ tempId: string; categoryIndex: number; parentTempId: string | null; text: string; note: string; dueAt: number | null; priority: "high" | "medium" | "low"; recurrence: TaskRecurrence; accountableDirectReportIndex: number | null; responsibleColleagueIndices?: number[]; done: boolean; collapsed: boolean; sortOrder: number }>,
   newSavedFilters?: Array<{ name: string; priority: "all" | "high" | "medium" | "low"; dueRange: "all" | "today" | "this_week" | "next_7_days" | "overdue" | "no_due_date"; categoryIndex: number | null; includeCompleted: boolean; sortOrder: number }>,
   newDirectReports?: Array<{ name: string; sortOrder: number }>,
+  newAttachments?: Array<{ tempTaskId: string; fileName: string; storageKey: string; contentType: string; sizeBytes: number }>,
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
 
   // Clear all
+  await db.delete(taskAttachments);
   await db.delete(taskResponsibleColleagues);
   await db.delete(tasks);
   await db.delete(categories);
@@ -505,6 +541,20 @@ export async function replaceAllData(
     const assignedIds = indices.map((index) => directReportIds[index]).filter((id): id is number => id !== undefined);
     if (assignedIds.length > 0) await db.insert(taskResponsibleColleagues).values(Array.from(new Set(assignedIds)).map((directReportId) => ({ taskId: newId, directReportId })));
     taskIdMap.set(task.tempId, newId);
+  }
+
+  if (newAttachments !== undefined) {
+    for (const attachment of newAttachments) {
+      const taskId = taskIdMap.get(attachment.tempTaskId);
+      if (!taskId) continue;
+      await db.insert(taskAttachments).values({
+        taskId,
+        fileName: attachment.fileName,
+        storageKey: attachment.storageKey,
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+      });
+    }
   }
 
   if (newSavedFilters !== undefined) {

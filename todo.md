@@ -543,3 +543,10 @@
 - [x] Apply the selected report scope consistently to the PDF download API and report layout
 - [x] Diagnose and repair browser new-task priority and Responsible Colleague controls
 - [x] Add regression coverage and validate the updated dashboard build
+
+## Complex Task Capture and Attachments
+- [x] Define durable task-attachment storage and protected attachment APIs
+- [x] Build a dedicated full-screen browser form for complex task creation and additional details
+- [x] Add attachment upload, review, removal, and task-detail access controls
+- [x] Confirm and retain the high-priority-only PDF report option in the completed workflow
+- [x] Add regression coverage and validate the updated dashboard build
