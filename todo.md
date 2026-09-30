@@ -550,3 +550,8 @@
 - [x] Add attachment upload, review, removal, and task-detail access controls
 - [x] Confirm and retain the high-priority-only PDF report option in the completed workflow
 - [x] Add regression coverage and validate the updated dashboard build
+
+## PDF Completed-Task Exclusion
+- [x] Exclude completed tasks from all dashboard PDF report scopes
+- [x] Update PDF report messaging and aggregate counts to reflect open tasks only
+- [x] Add regression coverage and validate the report download workflow

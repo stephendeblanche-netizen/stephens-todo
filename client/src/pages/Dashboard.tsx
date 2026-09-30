@@ -2201,7 +2201,7 @@ export default function Dashboard() {
                   aria-pressed={pdfReportScope === "all"}
                   onClick={() => setPdfReportScope("all")}
                 >
-                  All tasks
+                  Open tasks
                 </button>
                 <button
                   className="rounded-md px-2 py-1 text-[10.5px] font-semibold transition-colors"
@@ -2217,7 +2217,7 @@ export default function Dashboard() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
                 style={{ background: "var(--text-primary)", color: "var(--card-surface)", borderColor: "var(--text-primary)" }}
                 onClick={handlePdfReportDownload} type="button"
-                title={pdfReportScope === "high_priority" ? "Download a high-priority-only PDF task report" : "Download a professional task report as a PDF"}
+                title={pdfReportScope === "high_priority" ? "Download open high-priority tasks as a PDF" : "Download open tasks as a professional PDF report"}
               >
                 <FileText size={13} /> {pdfReportScope === "high_priority" ? "Download high-priority PDF" : "Download PDF report"}
               </button>

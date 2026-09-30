@@ -78,13 +78,13 @@ function pdfPageCount(pdf: Buffer) {
 }
 
 describe("dashboard PDF report", () => {
-  it("builds a complete section-based model with hierarchy, ownership and relevant notes", () => {
+  it("builds an open-task-only section model with hierarchy, ownership and relevant notes", () => {
     const model = buildDashboardReportModel(buildSnapshot());
 
     expect(model.scope).toBe("all");
-    expect(model.summary).toEqual({ total: 3, open: 2, completed: 1, highPriorityOpen: 1, categories: 2 });
+    expect(model.summary).toEqual({ total: 2, open: 2, highPriorityOpen: 1, categories: 2 });
     expect(model.sections).toHaveLength(2);
-    expect(model.sections[0]).toMatchObject({ total: 2, open: 1, completed: 1, highPriorityOpen: 1 });
+    expect(model.sections[0]).toMatchObject({ total: 1, open: 1, highPriorityOpen: 1 });
     expect(model.sections[0]?.tasks.map((row) => ({
       text: row.task.text,
       depth: row.depth,
@@ -101,23 +101,27 @@ describe("dashboard PDF report", () => {
         responsibleColleagues: ["Alex Morgan", "Jordan Lee"],
         note: "Include the latest operating results.",
       },
-      {
-        text: "Confirm final inputs",
-        depth: 1,
-        dueDate: null,
-        recurrenceLabel: null,
-        responsibleColleagues: ["Jordan Lee"],
-        note: "",
-      },
     ]);
     expect(model.sections[1]?.tasks[0]?.task.note).toBe("Prepare an options summary before the meeting.");
+  });
+
+  it("keeps open descendants visible when their completed parent is excluded", () => {
+    const snapshot = buildSnapshot();
+    snapshot.tasks[0] = { ...snapshot.tasks[0]!, done: true };
+    snapshot.tasks[1] = { ...snapshot.tasks[1]!, done: false };
+
+    const model = buildDashboardReportModel(snapshot);
+    expect(model.sections[0]?.tasks.map((row) => ({ text: row.task.text, depth: row.depth }))).toEqual([
+      { text: "Confirm final inputs", depth: 0 },
+    ]);
+    expect(model.sections.flatMap((section) => section.tasks).every((row) => !row.task.done)).toBe(true);
   });
 
   it("builds a focused report containing only open high-priority tasks and their sections", () => {
     const model = buildDashboardReportModel(buildSnapshot(), "high_priority");
 
     expect(model.scope).toBe("high_priority");
-    expect(model.summary).toEqual({ total: 1, open: 1, completed: 0, highPriorityOpen: 1, categories: 1 });
+    expect(model.summary).toEqual({ total: 1, open: 1, highPriorityOpen: 1, categories: 1 });
     expect(model.sections.map((section) => section.category.name)).toEqual(["URGENT"]);
     expect(model.sections[0]?.tasks.map((row) => row.task.text)).toEqual(["Prepare the board pack"]);
     expect(model.sections[0]?.tasks[0]?.responsibleColleagues).toEqual(["Alex Morgan", "Jordan Lee"]);
@@ -130,11 +134,23 @@ describe("dashboard PDF report", () => {
     expect(pdf.length).toBeGreaterThan(2000);
   });
 
+  it("renders a valid report when every recorded task has been completed", async () => {
+    const snapshot = buildSnapshot();
+    snapshot.tasks = snapshot.tasks.map((task) => ({ ...task, done: true }));
+
+    const model = buildDashboardReportModel(snapshot);
+    const pdf = await createDashboardPdfReport(snapshot);
+
+    expect(model.summary).toEqual({ total: 0, open: 0, highPriorityOpen: 0, categories: 2 });
+    expect(model.sections.every((section) => section.tasks.length === 0)).toBe(true);
+    expect(pdf.subarray(0, 4).toString("utf8")).toBe("%PDF");
+  });
+
   it("does not append a blank page for each populated page in a dashboard-scale report", async () => {
     const pdf = await createDashboardPdfReport(buildPaginationSnapshot());
 
-    // This fixture produces thirteen populated pages. The prior footer placement
-    // caused PDFKit to append a duplicate set of thirteen blank pages.
-    expect(pdfPageCount(pdf)).toBe(13);
+    // The fixture has 120 records but 30 are completed and must be excluded;
+    // the remaining 90 open tasks occupy ten populated pages only.
+    expect(pdfPageCount(pdf)).toBe(10);
   });
 });

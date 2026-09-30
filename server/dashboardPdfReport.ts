@@ -42,7 +42,6 @@ export type DashboardReportSection = {
   category: SnapshotCategory;
   tasks: DashboardReportTask[];
   total: number;
-  completed: number;
   open: number;
   highPriorityOpen: number;
 };
@@ -53,7 +52,6 @@ export type DashboardReportModel = {
   summary: {
     total: number;
     open: number;
-    completed: number;
     highPriorityOpen: number;
     categories: number;
   };
@@ -93,15 +91,18 @@ function sortTasks<T extends SnapshotTask>(tasks: T[]): T[] {
 }
 
 /**
- * Produces a rendering-neutral report model so the PDF keeps hierarchy, notes,
- * completion state and current multi-person Responsible Colleague assignments.
+ * Produces a rendering-neutral report model for active work only, retaining
+ * hierarchy, notes and current multi-person Responsible Colleague assignments.
  */
 export function buildDashboardReportModel(snapshot: DashboardExport, scope: DashboardReportScope = "all"): DashboardReportModel {
   const colleagueNameById = new Map(snapshot.directReports.map((report) => [report.id, report.name]));
   const tasksByCategory = new Map<number, SnapshotTask[]>();
+  // Completed work is deliberately left out of every PDF download. This keeps
+  // the report focused on the actionable task list regardless of its scope.
+  const openTasks = snapshot.tasks.filter((task) => !task.done);
   const includedTasks = scope === "high_priority"
-    ? snapshot.tasks.filter((task) => task.priority === "high" && !task.done)
-    : snapshot.tasks;
+    ? openTasks.filter((task) => task.priority === "high")
+    : openTasks;
 
   for (const task of includedTasks) {
     tasksByCategory.set(task.categoryId, [...(tasksByCategory.get(task.categoryId) ?? []), task]);
@@ -156,14 +157,12 @@ export function buildDashboardReportModel(snapshot: DashboardExport, scope: Dash
         appendBranch(task.id, 1);
       }
 
-      const completed = categoryTasks.filter((task) => task.done).length;
-      const highPriorityOpen = categoryTasks.filter((task) => !task.done && task.priority === "high").length;
+      const highPriorityOpen = categoryTasks.filter((task) => task.priority === "high").length;
       return {
         category,
         tasks: rows,
         total: categoryTasks.length,
-        completed,
-        open: categoryTasks.length - completed,
+        open: categoryTasks.length,
         highPriorityOpen,
       } satisfies DashboardReportSection;
     });
@@ -174,15 +173,13 @@ export function buildDashboardReportModel(snapshot: DashboardExport, scope: Dash
     : allSections;
 
   const total = includedTasks.length;
-  const completed = includedTasks.filter((task) => task.done).length;
   return {
     generatedAt: new Date(snapshot.exportedAt),
     scope,
     summary: {
       total,
-      completed,
-      open: total - completed,
-      highPriorityOpen: includedTasks.filter((task) => !task.done && task.priority === "high").length,
+      open: total,
+      highPriorityOpen: includedTasks.filter((task) => task.priority === "high").length,
       categories: sections.length,
     },
     sections,
@@ -312,7 +309,7 @@ function renderSection(doc: PDFKit.PDFDocument, section: DashboardReportSection)
   doc.fillColor(accent).font("Helvetica-Bold").fontSize(7.5).text(section.category.kind === "urgent" ? "URGENT SECTION" : "TASK SECTION", REPORT_MARGIN + 15, y + 9);
   doc.fillColor(COLORS.ink).font("Helvetica-Bold").fontSize(12.5).text(section.category.name, REPORT_MARGIN + 15, y + 20, { width: contentWidth - 180, lineBreak: false });
   doc.fillColor(COLORS.body).font("Helvetica").fontSize(8).text(
-    `${section.open} open  •  ${section.completed} completed  •  ${section.highPriorityOpen} high priority`,
+    `${section.open} open  •  ${section.highPriorityOpen} high priority`,
     REPORT_MARGIN + 15,
     y + 35,
     { width: contentWidth - 30, lineBreak: false },
@@ -388,7 +385,7 @@ export async function createDashboardPdfReport(snapshot: DashboardExport, scope:
     doc.fillColor(COLORS.body).font("Helvetica").fontSize(9).text(
       scope === "high_priority"
         ? "A focused, section-by-section summary of open high-priority tasks, ownership and delivery commitments."
-        : "A concise, section-by-section summary of current tasks, ownership and delivery commitments.",
+        : "A concise, section-by-section summary of open tasks, ownership and delivery commitments.",
     );
     doc.moveDown(0.95);
 
@@ -396,22 +393,24 @@ export async function createDashboardPdfReport(snapshot: DashboardExport, scope:
     const contentWidth = doc.page.width - REPORT_MARGIN * 2;
     const cardWidth = (contentWidth - cardGap * 3) / 4;
     const cardY = doc.y;
-    drawSummaryCard(doc, REPORT_MARGIN, cardY, cardWidth, scope === "high_priority" ? "High-priority open" : "Total tasks", model.summary.total, COLORS.blue);
+    drawSummaryCard(doc, REPORT_MARGIN, cardY, cardWidth, scope === "high_priority" ? "High-priority open" : "Open tasks", model.summary.total, COLORS.blue);
     drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap), cardY, cardWidth, "Open", model.summary.open, COLORS.blue);
-    drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 2, cardY, cardWidth, "Completed", model.summary.completed, COLORS.green);
-    drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 3, cardY, cardWidth, "High priority open", model.summary.highPriorityOpen, COLORS.red);
+    drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 2, cardY, cardWidth, "High priority", model.summary.highPriorityOpen, COLORS.red);
+    drawSummaryCard(doc, REPORT_MARGIN + (cardWidth + cardGap) * 3, cardY, cardWidth, "Sections", model.summary.categories, COLORS.blue);
     doc.y = cardY + 69;
     doc.x = REPORT_MARGIN;
     doc.fillColor(COLORS.muted).font("Helvetica").fontSize(8).text(
       scope === "high_priority"
         ? `${model.summary.categories} sections • Includes open high-priority tasks only, with hierarchy, due dates, Responsible Colleagues and relevant notes.`
-        : `${model.summary.categories} sections • Includes task hierarchy, status, priority, due dates, recurring schedules, Responsible Colleagues and relevant notes.`,
+        : `${model.summary.categories} sections • Includes open task hierarchy, priority, due dates, recurring schedules, Responsible Colleagues and relevant notes.`,
     );
     doc.moveDown(1.15);
 
     if (model.sections.length === 0) {
       doc.fillColor(COLORS.muted).font("Helvetica-Oblique").fontSize(10).text(
-        "No open high-priority tasks are currently recorded.",
+        scope === "high_priority"
+          ? "No open high-priority tasks are currently recorded."
+          : "No open tasks are currently recorded.",
         REPORT_MARGIN,
         doc.y + 8,
       );
