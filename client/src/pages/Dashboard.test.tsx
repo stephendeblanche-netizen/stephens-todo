@@ -107,9 +107,18 @@ vi.mock("@/lib/trpc", () => ({
   },
 }));
 
-function renderDashboard(view: string) {
-  window.history.replaceState({}, "", `/?view=${view}`);
+function renderDashboard(view?: string) {
+  window.history.replaceState({}, "", view ? `/?view=${view}` : "/");
   return render(<ThemeProvider defaultTheme="light"><Dashboard /></ThemeProvider>);
+}
+
+async function openManage(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Manage workspace" }));
+  return screen.findByRole("region", { name: "Manage workspace" });
+}
+
+function taskEntry(text: string) {
+  return screen.getByRole("button", { name: `Open details for ${text}` });
 }
 
 describe("Dashboard focused priority views", () => {
@@ -151,30 +160,49 @@ describe("Dashboard focused priority views", () => {
     window.history.replaceState({}, "", "/");
   });
 
+  it("opens on My Day by default and prioritises daily work", () => {
+    renderDashboard();
+    expect(screen.getByRole("heading", { name: "My Day" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /My Day/ }).getAttribute("aria-current")).toBe("page");
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("Medium due today")).not.toBeNull();
+  });
+
+  it("keeps administrative tools collapsed until the user opens Manage workspace", async () => {
+    const user = userEvent.setup();
+    renderDashboard("all");
+
+    expect(screen.queryByRole("region", { name: "Manage workspace" })).toBeNull();
+    const manageSurface = await openManage(user);
+    expect(manageSurface).not.toBeNull();
+    expect(within(manageSurface).getByRole("button", { name: "Download PDF report" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Manage workspace" }).getAttribute("aria-current")).toBe("page");
+  });
+
   it("applies the High filter to Today and Upcoming focused task lists", async () => {
     const user = userEvent.setup();
     const { unmount } = renderDashboard("today");
 
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.getByDisplayValue("Medium due today")).not.toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("Medium due today")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Filter High priority" }));
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();
 
     unmount();
     renderDashboard("upcoming");
     await user.click(screen.getByRole("button", { name: "Filter High priority" }));
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
-    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("High upcoming")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();
   });
 
   it("restores the High quick view from the URL and excludes non-high tasks", () => {
     renderDashboard("high");
     expect(screen.getByRole("heading", { name: "High priority" })).not.toBeNull();
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
-    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("High upcoming")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();
   });
 
   it("renders a clear task drop target inside an empty category", () => {
@@ -224,6 +252,7 @@ describe("Dashboard focused priority views", () => {
     renderDashboard("all");
 
     expect(fixture.pdfReportUseQuery).toHaveBeenLastCalledWith({ scope: "all" }, { enabled: false });
+    await openManage(user);
     await user.click(screen.getByRole("button", { name: "High priority only" }));
     expect(fixture.pdfReportUseQuery).toHaveBeenLastCalledWith({ scope: "high_priority" }, { enabled: false });
     expect(screen.getByRole("button", { name: "Download high-priority PDF" })).not.toBeNull();
@@ -234,7 +263,7 @@ describe("Dashboard focused priority views", () => {
     fixture.directReports = [{ id: 1, name: "Alex Morgan", sortOrder: 0 }, { id: 2, name: "Jordan Lee", sortOrder: 1 }];
     renderDashboard("all");
 
-    await user.click(screen.getByRole("button", { name: /detailed task/i }));
+    await user.click(screen.getByRole("button", { name: "Add task" }));
     expect(screen.getByRole("dialog", { name: "Create a detailed task" })).not.toBeNull();
     await user.type(screen.getByRole("textbox", { name: "Detailed task title" }), "Prepare board decision pack");
     await user.selectOptions(screen.getByRole("combobox", { name: "Detailed task category" }), "2");
@@ -330,10 +359,13 @@ describe("Dashboard focused priority views", () => {
     ]);
   });
 
-  it("handles title-field keyboard commands for completion, priority, and deletion", async () => {
+  it("keeps title keyboard commands available through the explicit title edit action", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
-    const title = screen.getByDisplayValue("Urgent high today");
+    expect(screen.queryByDisplayValue("Urgent high today")).toBeNull();
+    await user.click(taskEntry("Urgent high today"));
+    await user.click(screen.getByRole("button", { name: "Edit title for Urgent high today" }));
+    const title = screen.getByRole("textbox", { name: "Edit title for Urgent high today" });
     await user.click(title);
     await user.keyboard("{Control>}{Enter}{/Control}");
     expect(fixture.taskUpdateMutate).toHaveBeenLastCalledWith({ id: 1, done: true });
@@ -359,12 +391,12 @@ describe("Dashboard focused priority views", () => {
     ]);
   });
 
-  it("makes a task a sub-task through the Move to menu", async () => {
+  it("makes a task a Subtask through the Move to menu", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
 
     await user.click(screen.getByRole("button", { name: "Move Urgent high today" }));
-    const parentSubmenu = screen.getByRole("menuitem", { name: "Make sub-task of…" });
+    const parentSubmenu = screen.getByRole("menuitem", { name: "Make Subtask of…" });
     parentSubmenu.focus();
     await user.keyboard("{ArrowRight}");
     await user.click(await screen.findByRole("menuitem", { name: "QDR → Medium due today" }));
@@ -374,7 +406,7 @@ describe("Dashboard focused priority views", () => {
     ]);
   });
 
-  it("moves and indents a task from title-field keyboard shortcuts", async () => {
+  it("moves and indents a task from deliberate title edit keyboard shortcuts", async () => {
     fixture.tasks = [
       ...fixture.tasks,
       { id: 4, categoryId: 1, parentId: null, text: "Urgent sibling", note: "", dueAt: null, priority: "low", recurrence: "none", accountableDirectReportId: null, done: false, collapsed: false, sortOrder: 1 },
@@ -382,7 +414,9 @@ describe("Dashboard focused priority views", () => {
     const user = userEvent.setup();
     renderDashboard("all");
 
-    const urgentTitle = screen.getByDisplayValue("Urgent high today");
+    await user.click(taskEntry("Urgent high today"));
+    await user.click(screen.getByRole("button", { name: "Edit title for Urgent high today" }));
+    const urgentTitle = screen.getByRole("textbox", { name: "Edit title for Urgent high today" });
     await user.click(urgentTitle);
     await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
     expect(fixture.reorderTaskMutate).toHaveBeenLastCalledWith([
@@ -391,7 +425,9 @@ describe("Dashboard focused priority views", () => {
     ]);
 
     fixture.reorderTaskMutate.mockReset();
-    const siblingTitle = screen.getByDisplayValue("Urgent sibling");
+    await user.click(taskEntry("Urgent sibling"));
+    await user.click(screen.getByRole("button", { name: "Edit title for Urgent sibling" }));
+    const siblingTitle = screen.getByRole("textbox", { name: "Edit title for Urgent sibling" });
     await user.click(siblingTitle);
     await user.keyboard("{Tab}");
     expect(fixture.reorderTaskMutate).toHaveBeenCalledWith([
@@ -405,15 +441,16 @@ describe("Dashboard focused priority views", () => {
     fixture.tasks[2]!.dueAt = fixture.tasks[0]!.dueAt;
     renderDashboard("all");
     await user.click(screen.getByRole("button", { name: "High priority due this week" }));
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
-    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("High upcoming")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();
     expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
   });
 
   it("loads a saved filter into edit mode", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
     await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
     expect((screen.getByRole("textbox", { name: "Saved filter name" }) as HTMLInputElement).value).toBe("High priority due this week");
     expect(screen.getByRole("button", { name: "Update filter" })).not.toBeNull();
@@ -424,6 +461,7 @@ describe("Dashboard focused priority views", () => {
     fixture.updateFilterMutate.mockImplementation((_data: unknown, options?: { onSuccess?: () => void }) => options?.onSuccess?.());
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
     await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
     const nameInput = screen.getByRole("textbox", { name: "Saved filter name" });
     await user.clear(nameInput);
@@ -445,6 +483,7 @@ describe("Dashboard focused priority views", () => {
     });
     const user = userEvent.setup();
     const { rerender } = renderDashboard("all");
+    await openManage(user);
     await user.click(screen.getByRole("button", { name: "Edit High priority due this week" }));
     const nameInput = screen.getByRole("textbox", { name: "Saved filter name" });
     await user.clear(nameInput);
@@ -452,7 +491,7 @@ describe("Dashboard focused priority views", () => {
     await user.click(screen.getByRole("button", { name: "Update filter" }));
     rerender(<ThemeProvider defaultTheme="light"><Dashboard /></ThemeProvider>);
 
-    const refreshed = screen.getByRole("button", { name: "Executive tasks this week" });
+    const refreshed = within(screen.getByRole("region", { name: "Manage workspace" })).getByRole("button", { name: "Executive tasks this week" });
     expect(refreshed).not.toBeNull();
     await user.click(refreshed);
     expect((screen.getByRole("combobox", { name: "Due date range filter" }) as HTMLSelectElement).value).toBe("this_week");
@@ -475,9 +514,9 @@ describe("Dashboard focused priority views", () => {
     const user = userEvent.setup();
     renderDashboard("all");
     await user.selectOptions(screen.getByRole("combobox", { name: "Responsible Colleague filter" }), "1");
-    expect(screen.getByDisplayValue("Urgent high today")).not.toBeNull();
-    expect(screen.getByDisplayValue("High upcoming")).not.toBeNull();
-    expect(screen.queryByDisplayValue("Medium due today")).toBeNull();
+    expect(taskEntry("Urgent high today")).not.toBeNull();
+    expect(taskEntry("High upcoming")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();
   });
 
   it("expands and collapses a task note beneath the task row", async () => {
@@ -507,6 +546,7 @@ describe("Dashboard focused priority views", () => {
   it("adds a Responsible Colleague from the management section", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
     await user.type(screen.getByRole("textbox", { name: "New Responsible Colleague name" }), "Priya Shah");
     await user.click(screen.getByRole("button", { name: "Add Responsible Colleague" }));
     expect(fixture.createDirectReportMutate).toHaveBeenCalledWith(
@@ -522,6 +562,7 @@ describe("Dashboard focused priority views", () => {
     window.dispatchEvent(new Event("resize"));
 
     renderDashboard("all");
+    await openManage(user);
     const manager = screen.getByRole("region", { name: "Responsible Colleagues manager" });
     const footer = screen.getByRole("contentinfo");
     expect(manager.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
@@ -539,6 +580,7 @@ describe("Dashboard focused priority views", () => {
   it("shows and saves editable daily email settings for the dashboard owner", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
 
     expect((screen.getByLabelText("Daily email recipient") as HTMLInputElement).value).toBe("stephend@nutun.com");
     expect((screen.getByLabelText("Daily email delivery time in SAST") as HTMLInputElement).value).toBe("19:00");
@@ -554,6 +596,7 @@ describe("Dashboard focused priority views", () => {
   it("blocks saving daily email settings with an invalid recipient", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
     await user.clear(screen.getByLabelText("Daily email recipient"));
     await user.type(screen.getByLabelText("Daily email recipient"), "not-an-email");
     await user.click(screen.getByRole("button", { name: "Save delivery" }));
@@ -564,14 +607,17 @@ describe("Dashboard focused priority views", () => {
   it("blocks saving daily email settings without a valid 24-hour delivery time", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
     await user.clear(screen.getByLabelText("Daily email delivery time in SAST"));
     await user.click(screen.getByRole("button", { name: "Save delivery" }));
 
     expect(fixture.updateEmailSettingsMutate).not.toHaveBeenCalled();
   });
 
-  it("shows the owner-only Outlook connection panel before delegated data is available", () => {
+  it("shows the owner-only Outlook connection panel from Manage before delegated data is available", async () => {
+    const user = userEvent.setup();
     renderDashboard("all");
+    await openManage(user);
 
     expect(screen.getByRole("region", { name: "Outlook Calendar and email" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Connect Outlook" })).not.toBeNull();
@@ -582,6 +628,7 @@ describe("Dashboard focused priority views", () => {
     const user = userEvent.setup();
     fixture.microsoftConnected = true;
     renderDashboard("all");
+    await openManage(user);
 
     expect(screen.getByLabelText("Task to sync to Outlook Calendar")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Sync selected task to Outlook" }));
@@ -592,6 +639,7 @@ describe("Dashboard focused priority views", () => {
     const user = userEvent.setup();
     fixture.microsoftConnected = true;
     renderDashboard("all");
+    await openManage(user);
 
     await user.click(screen.getByRole("button", { name: /compose outlook email/i }));
     await user.type(screen.getByLabelText("Outlook email recipients"), "colleague@example.com");

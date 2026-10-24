@@ -7,7 +7,7 @@ describe("iOS companion task helpers", () => {
     expect(taskMatchesPriority(task, "high")).toBe(true);
     expect(taskMatchesPriority(task, "low")).toBe(false);
     expect(dueText(null)).toBe("No due date");
-    expect(priorityColor("low")).toBe("#248A50");
+    expect(priorityColor("low")).toBe("#027A48");
   });
 
   it("renders each category as a depth-first parent and sub-category tree", () => {

@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -9,6 +9,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
     getItem: vi.fn(async (key: string) => store.get(key) ?? null),
     setItem: vi.fn(async (key: string, value: string) => { store.set(key, value); }),
     removeItem: vi.fn(async (key: string) => { store.delete(key); }),
+    clear: vi.fn(async () => { store.clear(); }),
   },
 }));
 
@@ -28,3 +29,7 @@ vi.mock("expo-notifications", () => ({
 
 vi.mock("expo-device", () => ({ default: { isDevice: false } }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { extra: { eas: { projectId: "test-project" } } } } }));
+
+afterEach(() => {
+  store.clear();
+});

@@ -555,3 +555,12 @@
 - [x] Exclude completed tasks from all dashboard PDF report scopes
 - [x] Update PDF report messaging and aggregate counts to reflect open tasks only
 - [x] Add regression coverage and validate the report download workflow
+
+## Approved Cross-Platform Calm Command Centre Redesign
+- [ ] Establish the accessible shared visual system and task-management language across browser and native iOS
+- [ ] Rebuild the browser around My Day, a persistent workspace rail, compact filters, scan-first task rows, and contextual task details
+- [ ] Rework the iPhone home into a focused Today/Plan experience with simplified navigation, large touch targets, and task-first flows
+- [ ] Build an adaptive iPad planning workspace with persistent navigation, task list, and task-detail inspector
+- [ ] Repair first-use offline messaging, complete existing-task scheduling edits, selection safety, and Task/Subtask terminology
+- [ ] Add responsive, accessibility, browser, and native interaction regression coverage; validate production builds
+- [ ] Submit the approved native redesign to internal TestFlight after secure signing validation

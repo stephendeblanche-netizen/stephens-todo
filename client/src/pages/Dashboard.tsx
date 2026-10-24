@@ -69,6 +69,12 @@ import {
   Send,
   X,
   Paperclip,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  FolderKanban,
+  Bookmark,
 } from "lucide-react";
 import {
   DndContext,
@@ -134,6 +140,20 @@ function taskResponsibleColleagueLabel(task: Task, directReports: DirectReport[]
 
 function priorityMeta(priority: Task["priority"]) {
   return PRIORITY_META[priority] ?? PRIORITY_META.medium;
+}
+
+function isOverdue(dueAt: number | null | undefined, referenceDate = new Date()): boolean {
+  if (!dueAt || isDueToday(dueAt, referenceDate)) return false;
+  const todayStart = new Date(referenceDate);
+  todayStart.setHours(0, 0, 0, 0);
+  return dueAt < todayStart.getTime();
+}
+
+function myDayRank(task: Task, categories: Category[], referenceDate = new Date()): number {
+  if (isOverdue(task.dueAt, referenceDate)) return 0;
+  if (categories.find((category) => category.id === task.categoryId)?.kind === "urgent") return 1;
+  if (isDueToday(task.dueAt, referenceDate)) return 2;
+  return 3;
 }
 
 const RECURRENCE_LABELS: Record<Task["recurrence"], string> = {
@@ -326,6 +346,7 @@ function TaskItem({
   // Details should open only when the user asks. A due date must not expand the row after refresh.
   // A newly added task is the exception: expose its set-up controls immediately.
   const [dueOpen, setDueOpen] = useState(isNew);
+  const [titleEditing, setTitleEditing] = useState(isNew);
   const [hovered, setHovered] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeOpen, setSwipeOpen] = useState(false);
@@ -363,6 +384,7 @@ function TaskItem({
       textInputRef.current.focus();
       textInputRef.current.select();
       setDueOpen(true);
+      setTitleEditing(true);
     }
   }, [isNew]);
 
@@ -602,32 +624,50 @@ function TaskItem({
             aria-label={`Mark ${node.text} complete`}
           />
 
-          {/* Text */}
-          <input
-            ref={textInputRef}
-            className="flex-1 min-w-0 border-none bg-transparent px-1 py-0.5 rounded text-[13.5px] leading-relaxed font-[inherit]"
-            style={{
-              outline: "none",
-              color: node.done ? "var(--text-muted)" : "var(--text-primary)",
-              textDecoration: node.done ? "line-through" : "none",
-              fontWeight: hasChildren ? 600 : 400,
-            }}
-            defaultValue={node.text}
-            onBlur={(e) => {
-              const val = e.target.value.trim() || node.text;
-              e.target.value = val;
-              if (val !== node.text) onUpdate(node.id, { text: val });
-              if (isNew && onNewTaskCommitted) onNewTaskCommitted();
-            }}
-            onKeyDown={handleTitleKeyDown}
-            onCompositionStart={titleComposition.onCompositionStart}
-            onCompositionEnd={titleComposition.onCompositionEnd}
-            onFocus={(e) => { e.target.style.background = "var(--surface-1)"; e.target.style.outline = "1px solid var(--border-color)"; }}
-            onBlurCapture={(e) => { e.target.style.background = "transparent"; e.target.style.outline = "none"; }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            title="Shortcuts: Alt + ↑ / ↓ moves; Tab indents; Shift + Tab outdents; Ctrl/Cmd + Enter completes; Ctrl/Cmd + Shift + 1/2/3 sets priority; Ctrl/Cmd + Shift + Backspace deletes."
-          />
+          {/* Scan-first resting state; title editing is a deliberate action. */}
+          {titleEditing ? (
+            <input
+              ref={textInputRef}
+              className="flex-1 min-w-0 rounded border px-2 py-1 text-[13.5px] leading-relaxed font-[inherit]"
+              style={{
+                color: node.done ? "var(--text-muted)" : "var(--text-primary)",
+                background: "var(--surface-1)",
+                borderColor: "var(--evergreen)",
+                textDecoration: node.done ? "line-through" : "none",
+                fontWeight: hasChildren ? 600 : 400,
+              }}
+              defaultValue={node.text}
+              onBlur={(e) => {
+                const val = e.target.value.trim() || node.text;
+                e.target.value = val;
+                if (val !== node.text) onUpdate(node.id, { text: val });
+                setTitleEditing(false);
+                if (isNew && onNewTaskCommitted) onNewTaskCommitted();
+              }}
+              onKeyDown={handleTitleKeyDown}
+              onCompositionStart={titleComposition.onCompositionStart}
+              onCompositionEnd={titleComposition.onCompositionEnd}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Edit title for ${node.text}`}
+              title="Shortcuts: Alt + ↑ / ↓ moves; Tab indents; Shift + Tab outdents; Ctrl/Cmd + Enter completes; Ctrl/Cmd + Shift + 1/2/3 sets priority; Ctrl/Cmd + Shift + Backspace deletes."
+            />
+          ) : (
+            <button
+              className="dashboard-task-title flex-1 min-w-0 rounded border-none bg-transparent px-1 py-1 text-[13.5px] leading-relaxed font-[inherit]"
+              style={{
+                color: node.done ? "var(--text-muted)" : "var(--text-primary)",
+                textDecoration: node.done ? "line-through" : "none",
+                fontWeight: hasChildren ? 600 : 400,
+              }}
+              type="button"
+              onClick={(event) => { event.stopPropagation(); setDueOpen(true); }}
+              aria-label={`Open details for ${node.text}`}
+              title="Open task details"
+            >
+              {node.text}
+            </button>
+          )}
           <button
             className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-[inherit]"
             style={{ color: priorityMeta(draftPriority).color, background: "var(--page-plane)" }}
@@ -698,7 +738,7 @@ function TaskItem({
                 })}
                 <DropdownMenuSeparator />
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>Make sub-task of…</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger>Make Subtask of…</DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="max-h-72 w-72 overflow-y-auto">
                     {possibleParentTasks.length > 0 ? possibleParentTasks.map((parentTask) => {
                       const parentCategory = categories.find((category) => category.id === parentTask.categoryId);
@@ -764,7 +804,8 @@ function TaskItem({
             <button
               className="w-5 h-5 flex items-center justify-center rounded transition-colors"
               style={{ color: "var(--text-muted)", background: "transparent", border: "none" }}
-              title="Add sub-item"
+              title="Add Subtask"
+              aria-label={`Add Subtask to ${node.text}`}
               onClick={(e) => { e.stopPropagation(); onAddChild(node.id, categoryId); }}
               type="button"
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
@@ -808,15 +849,26 @@ function TaskItem({
           <div id={`task-detail-panel-${node.id}`} role="region" aria-label={`Task details for ${node.text}`} className="ml-7 mb-1 mt-0.5 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
             <div className="basis-full flex items-center justify-between gap-2 border-b pb-1" style={{ borderColor: "var(--border-color)" }}>
               <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>{isNew ? "New task setup" : "Task details"}</span>
-              <button
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold transition-colors"
-                style={{ color: "var(--slot-1)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
-                type="button"
-                onClick={() => setDueOpen(false)}
-                aria-label={`Minimise details for ${node.text}`}
-              >
-                <ChevronDown size={12} /> Minimise details
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold transition-colors"
+                  style={{ color: "var(--evergreen)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+                  type="button"
+                  onClick={() => { setTitleEditing(true); requestAnimationFrame(() => textInputRef.current?.focus()); }}
+                  aria-label={`Edit title for ${node.text}`}
+                >
+                  Edit title
+                </button>
+                <button
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold transition-colors"
+                  style={{ color: "var(--slot-1)", background: "var(--card-surface)", borderColor: "var(--border-color)" }}
+                  type="button"
+                  onClick={() => setDueOpen(false)}
+                  aria-label={`Minimise details for ${node.text}`}
+                >
+                  <ChevronDown size={12} /> Minimise details
+                </button>
+              </div>
             </div>
             <label className="text-[11px]" style={{ color: "var(--text-secondary)" }}>Due</label>
             <input
@@ -1045,8 +1097,10 @@ interface TodayTaskRowProps {
 
 function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlookConnected = false, onSyncToOutlook }: TodayTaskRowProps) {
   const dueToday = isDueToday(task.dueAt);
+  const overdue = isOverdue(task.dueAt);
   const isUrgent = category?.kind === "urgent";
   const [noteOpen, setNoteOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
     <article
@@ -1074,8 +1128,13 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlo
               URGENT
             </span>
           )}
+          {overdue && (
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--status-critical)", background: "var(--drop-wash)" }}>
+              OVERDUE
+            </span>
+          )}
           {dueToday && (
-            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--status-good)", background: "var(--page-plane)" }}>
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--page-plane)" }}>
               DUE TODAY
             </span>
           )}
@@ -1088,57 +1147,28 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlo
             </span>
           )}
         </div>
-        <input
-          className="w-full border-none bg-transparent px-0 py-0.5 text-[14px] font-[inherit]"
-          style={{ color: "var(--text-primary)", outline: "none" }}
-          defaultValue={task.text}
-          onBlur={(event) => {
-            const text = event.target.value.trim() || task.text;
-            event.target.value = text;
-            if (text !== task.text) onUpdate(task.id, { text });
-          }}
-          aria-label="Task title"
-        />
+        <button
+          className="dashboard-task-title w-full border-none bg-transparent px-0 py-0.5 text-[14px] font-[inherit]"
+          style={{ color: "var(--text-primary)" }}
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          aria-label={`Open details for ${task.text}`}
+        >
+          {task.text}
+        </button>
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-        <input
-          type="date"
-          value={toLocalDateInputValue(task.dueAt)}
-          onChange={(event) => onUpdate(task.id, { dueAt: dueAtFromLocalDateInput(event.target.value) })}
-          className="h-7 max-w-[130px] rounded-md border px-1.5 text-[11px] font-[inherit]"
-          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-          aria-label={`Due date for ${task.text}`}
-        />
-        <select
-          value={task.priority}
-          onChange={(event) => onUpdate(task.id, { priority: event.target.value as Task["priority"] })}
-          className="h-7 rounded-md border px-1.5 text-[11px] font-[inherit]"
-          style={{ color: priorityMeta(task.priority).color, background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-          aria-label={`Priority for ${task.text}`}
+        <button
+          className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
+          style={{ color: "var(--evergreen)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
+          type="button"
+          onClick={() => setDetailsOpen((open) => !open)}
+          aria-label={`${detailsOpen ? "Hide" : "Show"} details for ${task.text}`}
+          aria-expanded={detailsOpen}
+          aria-controls={`my-day-details-${task.id}`}
         >
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select
-          value={task.recurrence}
-          onChange={(event) => onUpdate(task.id, { recurrence: event.target.value as Task["recurrence"] })}
-          className="h-7 rounded-md border px-1.5 text-[11px] font-[inherit]"
-          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-          aria-label={`Recurrence for ${task.text}`}
-        >
-          <option value="none">No repeat</option>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
-        <span
-          className="max-w-[180px] truncate rounded border px-1.5 py-1 text-[11px]"
-          style={{ color: "var(--text-secondary)", background: "var(--page-plane)", borderColor: "var(--border-color)" }}
-          title={taskResponsibleColleagueLabel(task, directReports)}
-        >
-          {taskResponsibleColleagueLabel(task, directReports)}
-        </span>
+          <Flag size={11} /> Details
+        </button>
         {outlookConnected && task.dueAt && onSyncToOutlook && (
           <button
             className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-[inherit]"
@@ -1172,6 +1202,29 @@ function TodayTaskRow({ task, category, directReports, onUpdate, onDelete, outlo
           <Trash2 size={13} />
         </button>
       </div>
+      {detailsOpen && (
+        <div id={`my-day-details-${task.id}`} role="region" aria-label={`Task details for ${task.text}`} className="w-full rounded-lg border p-2.5" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Details &amp; edit</span>
+            <button className="border-none bg-transparent px-1 text-[11px] font-[inherit]" style={{ color: "var(--text-secondary)" }} type="button" onClick={() => setDetailsOpen(false)}>Close</button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Title
+              <input className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} defaultValue={task.text} onBlur={(event) => { const text = event.target.value.trim() || task.text; event.target.value = text; if (text !== task.text) onUpdate(task.id, { text }); }} aria-label={`Edit title for ${task.text}`} />
+            </label>
+            <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Due date
+              <input type="date" value={toLocalDateInputValue(task.dueAt)} onChange={(event) => onUpdate(task.id, { dueAt: dueAtFromLocalDateInput(event.target.value) })} className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label={`Due date for ${task.text}`} />
+            </label>
+            <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Priority
+              <select value={task.priority} onChange={(event) => onUpdate(task.id, { priority: event.target.value as Task["priority"] })} className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ color: priorityMeta(task.priority).color, background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label={`Priority for ${task.text}`}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+            </label>
+            <label className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>Repeat
+              <select value={task.recurrence} onChange={(event) => onUpdate(task.id, { recurrence: event.target.value as Task["recurrence"] })} className="mt-1 w-full rounded-md border px-2 py-1.5 text-[12px] font-[inherit]" style={{ color: "var(--text-primary)", background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label={`Recurrence for ${task.text}`}><option value="none">No repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
+            </label>
+          </div>
+          <p className="mb-0 mt-2 text-[11px]" style={{ color: "var(--text-secondary)" }}>Responsible Colleagues: {taskResponsibleColleagueLabel(task, directReports)}</p>
+        </div>
+      )}
       {noteOpen && (
         <div id={`focused-note-panel-${task.id}`} className="w-full rounded-lg border p-2" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
           <div className="mb-1 flex items-center justify-between gap-2">
@@ -1455,10 +1508,13 @@ export default function Dashboard() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeCats, setActiveCats] = useState<Set<number> | null>(null);
   const [activeView, setActiveView] = useState<"all" | "today" | "upcoming" | "high" | "calendar">(() => {
-    if (typeof window === "undefined") return "all";
+    if (typeof window === "undefined") return "today";
     const view = new URLSearchParams(window.location.search).get("view");
-    return view === "today" || view === "upcoming" || view === "high" || view === "calendar" ? view : "all";
+    return view === "all" || view === "today" || view === "upcoming" || view === "high" || view === "calendar" ? view : "today";
   });
+  const [manageOpen, setManageOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [compactNavOpen, setCompactNavOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<"all" | Task["priority"]>("all");
   const [dueRange, setDueRange] = useState<DueRange>("all");
   const [directReportFilter, setDirectReportFilter] = useState<DirectReportFilter>("all");
@@ -1574,7 +1630,20 @@ export default function Dashboard() {
   }, [categoriesData, tasksData]);
 
   const todayTasks = useMemo(
-    () => selectTodayTasks(tasksData, categoriesData),
+    () => tasksData
+      .filter((task) => !task.done && (
+        isOverdue(task.dueAt)
+        || isDueToday(task.dueAt)
+        || categoriesData.find((category) => category.id === task.categoryId)?.kind === "urgent"
+      ))
+      .sort((left, right) => {
+        const urgencyDifference = myDayRank(left, categoriesData) - myDayRank(right, categoriesData);
+        if (urgencyDifference) return urgencyDifference;
+        const priorityDifference = (left.priority === "high" ? 0 : left.priority === "medium" ? 1 : 2)
+          - (right.priority === "high" ? 0 : right.priority === "medium" ? 1 : 2);
+        if (priorityDifference) return priorityDifference;
+        return (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER) || left.sortOrder - right.sortOrder;
+      }),
     [tasksData, categoriesData],
   );
   const upcomingTasks = useMemo(
@@ -2160,6 +2229,56 @@ export default function Dashboard() {
     [categoriesData]
   );
 
+  const selectWorkspaceView = (view: "all" | "today" | "upcoming" | "high" | "calendar") => {
+    setManageOpen(false);
+    setCompactNavOpen(false);
+    handleViewChange(view);
+  };
+
+  const openManage = () => {
+    setManageOpen(true);
+    setCompactNavOpen(false);
+  };
+
+  const workspaceNavigation = (compact = false) => (
+    <nav className={compact ? "dashboard-compact-nav rounded-xl border p-2" : ""} style={compact ? { background: "var(--surface)", borderColor: "var(--border-color)" } : undefined} aria-label={compact ? "Workspace navigation" : "Workspace navigation"}>
+      <p className="dashboard-rail-heading">Work views</p>
+      {([
+        ["today", "My Day", CalendarDays, todayTasks.length],
+        ["all", "All tasks", ListTodo, stats.total],
+        ["upcoming", "Upcoming", CalendarDays, upcomingTasks.length],
+        ["high", "High priority", Flag, highPriorityTasks.length],
+        ["calendar", "Calendar", CalendarDays, undefined],
+      ] as const).map(([view, label, Icon, count]) => (
+        <button key={view} className={`dashboard-rail-button ${activeView === view && !manageOpen ? "is-active" : ""}`} type="button" onClick={() => selectWorkspaceView(view)} aria-current={activeView === view && !manageOpen ? "page" : undefined}>
+          <Icon size={17} aria-hidden="true" /> <span className="dashboard-rail-label">{label}</span>{count !== undefined && <span className="dashboard-rail-count rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)" }}>{count}</span>}
+        </button>
+      ))}
+
+      <p className="dashboard-rail-heading">Categories</p>
+      <button className={`dashboard-rail-button ${activeView === "all" && activeCats === null && !manageOpen ? "is-active" : ""}`} type="button" onClick={() => { setActiveCats(null); selectWorkspaceView("all"); }}>
+        <FolderKanban size={17} aria-hidden="true" /> <span className="dashboard-rail-label">All categories</span>
+      </button>
+      {sortedCats.map((category) => (
+        <button key={category.id} className={`dashboard-rail-button ${activeView === "all" && effectiveActiveCats.size === 1 && effectiveActiveCats.has(category.id) && !manageOpen ? "is-active" : ""}`} type="button" onClick={() => { setActiveCats(new Set([category.id])); selectWorkspaceView("all"); }}>
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: catColor(category) }} aria-hidden="true" /> <span className="dashboard-rail-label truncate">{category.name}</span>
+        </button>
+      ))}
+
+      <p className="dashboard-rail-heading">Saved views</p>
+      {savedFilters.length > 0 ? savedFilters.map((filter) => (
+        <button key={filter.id} className="dashboard-rail-button" type="button" onClick={() => { setManageOpen(false); setCompactNavOpen(false); handleApplySavedFilter(filter); }}>
+          <Bookmark size={16} aria-hidden="true" /> <span className="dashboard-rail-label truncate">{filter.name}</span>
+        </button>
+      )) : <p className="px-2 text-[11px]" style={{ color: "var(--text-muted)" }}>Save a filter from Manage.</p>}
+
+      <p className="dashboard-rail-heading">Manage</p>
+      <button className={`dashboard-rail-button ${manageOpen ? "is-active" : ""}`} type="button" onClick={openManage} aria-current={manageOpen ? "page" : undefined}>
+        <Settings size={17} aria-hidden="true" /> <span className="dashboard-rail-label">Manage workspace</span>
+      </button>
+    </nav>
+  );
+
   return (
     <DndContext
       sensors={sensors}
@@ -2169,14 +2288,31 @@ export default function Dashboard() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="min-h-screen" style={{ background: "var(--page-plane)", color: "var(--text-primary)" }}>
-        <div className="max-w-[1000px] mx-auto px-5 py-6 pb-24">
+      <div className="dashboard-shell" style={{ background: "var(--page-plane)", color: "var(--text-primary)" }}>
+        <aside className={`dashboard-rail ${railCollapsed ? "is-collapsed" : ""}`} aria-label="Primary workspace navigation">
+          <div className="mb-3 flex items-center justify-between gap-2 px-1">
+            <span className="dashboard-rail-label text-[13px] font-bold" style={{ color: "var(--text-primary)" }}>Calm Command Centre</span>
+            <button className="flex h-9 w-9 items-center justify-center rounded-md border-none bg-transparent" type="button" onClick={() => setRailCollapsed((collapsed) => !collapsed)} aria-label={railCollapsed ? "Expand navigation rail" : "Collapse navigation rail"}>
+              {railCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
+          </div>
+          {workspaceNavigation()}
+        </aside>
+        <main className="dashboard-page">
+          <div className="dashboard-mobile-bar items-center justify-between gap-3">
+            <span className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>Calm Command Centre</span>
+            <button className="dashboard-compact-control inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold" style={{ background: "var(--surface)", borderColor: "var(--border-color)" }} type="button" onClick={() => setCompactNavOpen((open) => !open)} aria-expanded={compactNavOpen} aria-controls="compact-workspace-navigation">
+              <Menu size={16} /> Workspace
+            </button>
+          </div>
+          {compactNavOpen && <div id="compact-workspace-navigation">{workspaceNavigation(true)}</div>}
+          <div className="dashboard-main">
 
           {/* Top bar */}
           <div className="flex justify-between items-start gap-4 flex-wrap mb-5">
             <div>
               <h1 className="text-[22px] font-bold m-0 mb-1" style={{ color: "var(--text-primary)" }}>
-                Stephen's To-Do Dashboard
+                My Day
               </h1>
               <p className="text-[13px] m-0" style={{ color: "var(--text-secondary)" }}>
                 {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
@@ -2184,60 +2320,14 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-2 flex-wrap items-center">
               <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
+                className="flex min-h-10 items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
                 style={{ background: "var(--slot-1)", color: "white", borderColor: "var(--slot-1)" }}
                 onClick={() => setShowComplexTaskForm(true)}
                 type="button"
                 title="Open the full-screen form for a detailed task with attachments"
               >
-                <Plus size={13} /> Detailed task
+                <Plus size={13} /> Add task
               </button>
-              <div className="flex items-center gap-1 rounded-lg border p-1" role="group" aria-label="PDF report scope" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
-                <span className="px-1.5 text-[10px] font-semibold" style={{ color: "var(--text-secondary)" }}>PDF</span>
-                <button
-                  className="rounded-md px-2 py-1 text-[10.5px] font-semibold transition-colors"
-                  style={{ color: pdfReportScope === "all" ? "var(--text-primary)" : "var(--text-secondary)", background: pdfReportScope === "all" ? "var(--page-plane)" : "transparent", border: "none" }}
-                  type="button"
-                  aria-pressed={pdfReportScope === "all"}
-                  onClick={() => setPdfReportScope("all")}
-                >
-                  Open tasks
-                </button>
-                <button
-                  className="rounded-md px-2 py-1 text-[10.5px] font-semibold transition-colors"
-                  style={{ color: pdfReportScope === "high_priority" ? "var(--status-critical)" : "var(--text-secondary)", background: pdfReportScope === "high_priority" ? "var(--page-plane)" : "transparent", border: "none" }}
-                  type="button"
-                  aria-pressed={pdfReportScope === "high_priority"}
-                  onClick={() => setPdfReportScope("high_priority")}
-                >
-                  High priority only
-                </button>
-              </div>
-              <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-                style={{ background: "var(--text-primary)", color: "var(--card-surface)", borderColor: "var(--text-primary)" }}
-                onClick={handlePdfReportDownload} type="button"
-                title={pdfReportScope === "high_priority" ? "Download open high-priority tasks as a PDF" : "Download open tasks as a professional PDF report"}
-              >
-                <FileText size={13} /> {pdfReportScope === "high_priority" ? "Download high-priority PDF" : "Download PDF report"}
-              </button>
-              <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-                style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--text-secondary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-color)"; }}
-                onClick={handleExport} type="button"
-                title="Download a JSON backup for restoring the dashboard"
-              >
-                <FileDown size={13} /> Export backup
-              </button>
-              <label
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
-                style={{ background: "var(--card-surface)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}
-              >
-                <FileUp size={13} /> Import snapshot
-                <input type="file" accept="application/json" className="hidden" onChange={handleImport} />
-              </label>
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] cursor-pointer font-[inherit] transition-colors"
                 style={{ background: "var(--card-surface)", color: "var(--text-secondary)", borderColor: "var(--border-color)" }}
@@ -2272,49 +2362,6 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-
-          <nav className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border p-1" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }} aria-label="Task views">
-            <button
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
-              style={{ background: activeView === "all" ? "var(--page-plane)" : "transparent", color: activeView === "all" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
-              onClick={() => handleViewChange("all")}
-              type="button"
-            >
-              <ListTodo size={13} /> All tasks
-            </button>
-            <button
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
-              style={{ background: activeView === "today" ? "var(--page-plane)" : "transparent", color: activeView === "today" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
-              onClick={() => handleViewChange("today")}
-              type="button"
-            >
-              <CalendarDays size={13} /> Today <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{todayTasks.length}</span>
-            </button>
-            <button
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
-              style={{ background: activeView === "upcoming" ? "var(--page-plane)" : "transparent", color: activeView === "upcoming" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
-              onClick={() => handleViewChange("upcoming")}
-              type="button"
-            >
-              <CalendarDays size={13} /> Upcoming <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{upcomingTasks.length}</span>
-            </button>
-            <button
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
-              style={{ background: activeView === "high" ? "var(--page-plane)" : "transparent", color: activeView === "high" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
-              onClick={() => handleViewChange("high")}
-              type="button"
-            >
-              <Flag size={13} fill="currentColor" style={{ color: "var(--status-critical)" }} /> High <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)", color: "var(--text-secondary)" }}>{highPriorityTasks.length}</span>
-            </button>
-            <button
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-[inherit] transition-colors"
-              style={{ background: activeView === "calendar" ? "var(--page-plane)" : "transparent", color: activeView === "calendar" ? "var(--text-primary)" : "var(--text-secondary)", border: "none" }}
-              onClick={() => handleViewChange("calendar")}
-              type="button"
-            >
-              <CalendarDays size={13} /> Calendar
-            </button>
-          </nav>
 
           {/* Controls */}
           <div className="flex gap-2.5 flex-wrap mb-3.5 items-center">
@@ -2424,6 +2471,24 @@ export default function Dashboard() {
               </button>
             </section>
           )}
+
+          {manageOpen && (
+          <section aria-label="Manage workspace" className="mb-5 rounded-2xl border p-3 sm:p-4" style={{ background: "var(--surface)", borderColor: "var(--border-color)" }}>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-3" style={{ borderColor: "var(--border-color)" }}>
+              <div>
+                <h2 className="m-0 text-[17px] font-semibold" style={{ color: "var(--text-primary)" }}>Manage workspace</h2>
+                <p className="m-0 mt-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>Saved views, reports, data tools, connections, categories, and colleagues.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 rounded-lg border p-1" role="group" aria-label="PDF report scope" style={{ background: "var(--page-plane)", borderColor: "var(--border-color)" }}>
+                  <button className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ color: pdfReportScope === "all" ? "var(--text-primary)" : "var(--text-secondary)", background: pdfReportScope === "all" ? "var(--surface)" : "transparent", border: "none" }} type="button" aria-pressed={pdfReportScope === "all"} onClick={() => setPdfReportScope("all")}>Open tasks</button>
+                  <button className="rounded-md px-2 py-1 text-[10.5px] font-semibold" style={{ color: pdfReportScope === "high_priority" ? "var(--status-critical)" : "var(--text-secondary)", background: pdfReportScope === "high_priority" ? "var(--surface)" : "transparent", border: "none" }} type="button" aria-pressed={pdfReportScope === "high_priority"} onClick={() => setPdfReportScope("high_priority")}>High priority only</button>
+                </div>
+                <button className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold" style={{ background: "var(--text-primary)", color: "var(--card-surface)", borderColor: "var(--text-primary)" }} onClick={handlePdfReportDownload} type="button"> <FileText size={13} /> {pdfReportScope === "high_priority" ? "Download high-priority PDF" : "Download PDF report"}</button>
+                <button className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold" style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)" }} onClick={handleExport} type="button"><FileDown size={13} /> Export backup</button>
+                <label className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-semibold" style={{ background: "var(--page-plane)", color: "var(--text-primary)", borderColor: "var(--border-color)" }}><FileUp size={13} /> Import snapshot<input type="file" accept="application/json" className="hidden" onChange={handleImport} /></label>
+              </div>
+            </div>
 
           <section className="mb-4 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -2640,6 +2705,8 @@ export default function Dashboard() {
               );
             })}
           </div>
+          </section>
+          )}
 
           {isLoading && (
             <div className="text-center py-10 text-[13px]" style={{ color: "var(--text-muted)" }}>Loading your tasks…</div>
@@ -2886,6 +2953,7 @@ export default function Dashboard() {
             </SortableContext>
           )}
 
+          {manageOpen && (
           <section aria-label="Responsible Colleagues manager" className="mt-6 rounded-xl border p-3" style={{ background: "var(--card-surface)", borderColor: "var(--border-color)" }}>
             <div className="mb-2">
               <h2 className="m-0 text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>Responsible Colleagues</h2>
@@ -2934,11 +3002,13 @@ export default function Dashboard() {
               <p className="mb-0 mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>No Responsible Colleagues yet. Tasks currently use N/A until you add someone.</p>
             )}
           </section>
+          )}
 
           <footer className="text-center text-[11.5px] mt-6" style={{ color: "var(--text-muted)" }}>
             Stephen's To-Do Dashboard · Data saved server-side · accessible from any device
           </footer>
         </div>
+        </main>
 
         {/* Drag overlay — shown while dragging on all platforms */}
         <DragOverlay>

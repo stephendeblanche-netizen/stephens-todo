@@ -1,6 +1,6 @@
 import type { Category, Priority, Task } from "./types";
 
-export const priorityColor = (priority: Priority) => priority === "high" ? "#C63E3E" : priority === "medium" ? "#B77716" : "#248A50";
+export const priorityColor = (priority: Priority) => priority === "high" ? "#B42318" : priority === "medium" ? "#9A6700" : "#027A48";
 export const taskMatchesPriority = (task: Task, priority: "all" | Priority) => priority === "all" || task.priority === priority;
 export type OrderedTask = Task & { hierarchyDepth: number; parentTaskText: string | null };
 
