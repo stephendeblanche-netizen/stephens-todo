@@ -116,6 +116,7 @@ const textInput = (root: ReactTestInstance, label: string) => {
   return instance!;
 };
 const containsText = (root: ReactTestInstance, value: string) => root.findAll((node) => String(node.type) === "Text" && node.children.join("") === value).length > 0;
+const resolvedStyle = (style: unknown): Record<string, unknown> => (Array.isArray(style) ? style : [style]).filter(Boolean).reduce((combined, layer) => ({ ...combined, ...(layer as Record<string, unknown>) }), {});
 const tap = async (instance: ReactTestInstance) => act(async () => { instance.props.onPress?.(); await Promise.resolve(); });
 const settle = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await Promise.resolve(); });
 
@@ -236,6 +237,63 @@ describe("redesigned iOS companion interactions", () => {
     expect(containsText(root, "More")).toBe(true);
     expect(button(root, "Add task")).toBeTruthy();
     expect(button(root, "Compose corporate email")).toBeTruthy();
+  });
+
+  it("uses fluid 44pt header actions on a narrow iPhone without fixed-width overflow", async () => {
+    dimensions.width = 390;
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    for (const label of ["Select multiple tasks", "More workspace actions", "Add item"]) {
+      const style = resolvedStyle(button(root, label).props.style);
+      expect(style).toMatchObject({ minHeight: 44, flex: 1, minWidth: 0 });
+      expect(style.width).toBeUndefined();
+    }
+    const compactHeaderRow = root.findAll((node) => {
+      const style = resolvedStyle(node.props.style);
+      return String(node.type) === "View" && style.flexDirection === "column" && style.alignItems === "stretch";
+    });
+    const compactActionRow = root.findAll((node) => {
+      const style = resolvedStyle(node.props.style);
+      return String(node.type) === "View" && style.width === "100%" && style.marginLeft === 0 && style.flexDirection === "row";
+    });
+    expect(compactHeaderRow).toHaveLength(1);
+    expect(compactActionRow).toHaveLength(1);
+  });
+
+  it("collapses and re-expands Top 3 while preserving access to every focus task", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "First focus", priority: "high", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Second focus", priority: "medium", sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 11, text: "Third focus", priority: "low", sortOrder: 2 },
+      ],
+    });
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    expect(button(root, "Collapse Top 3 focus").props.accessibilityState).toEqual({ expanded: true });
+    expect(button(root, "Focus task First focus")).toBeTruthy();
+    expect(button(root, "Focus task Second focus")).toBeTruthy();
+    expect(button(root, "Focus task Third focus")).toBeTruthy();
+
+    await tap(button(root, "Collapse Top 3 focus"));
+
+    expect(button(root, "Expand Top 3 focus, 3 tasks").props.accessibilityState).toEqual({ expanded: false });
+    expect(containsText(root, "3 focus tasks")).toBe(true);
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Focus task First focus")).toBeUndefined();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Focus task Second focus")).toBeUndefined();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Focus task Third focus")).toBeUndefined();
+
+    await tap(button(root, "Expand Top 3 focus, 3 tasks"));
+
+    expect(button(root, "Collapse Top 3 focus").props.accessibilityState).toEqual({ expanded: true });
+    expect(button(root, "Focus task First focus")).toBeTruthy();
+    expect(button(root, "Focus task Second focus")).toBeTruthy();
+    expect(button(root, "Focus task Third focus")).toBeTruthy();
   });
 
   it("renders the regular-width iPad planning workspace and opens its inspector", async () => {

@@ -564,3 +564,8 @@
 - [x] Repair first-use offline messaging, complete existing-task scheduling edits, selection safety, and Task/Subtask terminology
 - [x] Add responsive, accessibility, browser, and native interaction regression coverage; validate production builds
 - [x] Submit the approved native redesign to internal TestFlight after secure signing validation
+
+## iPhone Header and Focus-Space Repair
+- [ ] Keep Today header actions entirely within narrow iPhone safe width
+- [ ] Add an accessible collapse/expand control for the Top 3 Focus section
+- [ ] Add layout and interaction regression coverage; validate and deliver the native correction
