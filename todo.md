@@ -557,10 +557,10 @@
 - [x] Add regression coverage and validate the report download workflow
 
 ## Approved Cross-Platform Calm Command Centre Redesign
-- [ ] Establish the accessible shared visual system and task-management language across browser and native iOS
-- [ ] Rebuild the browser around My Day, a persistent workspace rail, compact filters, scan-first task rows, and contextual task details
-- [ ] Rework the iPhone home into a focused Today/Plan experience with simplified navigation, large touch targets, and task-first flows
-- [ ] Build an adaptive iPad planning workspace with persistent navigation, task list, and task-detail inspector
-- [ ] Repair first-use offline messaging, complete existing-task scheduling edits, selection safety, and Task/Subtask terminology
-- [ ] Add responsive, accessibility, browser, and native interaction regression coverage; validate production builds
-- [ ] Submit the approved native redesign to internal TestFlight after secure signing validation
+- [x] Establish the accessible shared visual system and task-management language across browser and native iOS
+- [x] Rebuild the browser around My Day, a persistent workspace rail, compact filters, scan-first task rows, and contextual task details
+- [x] Rework the iPhone home into a focused Today/Plan experience with simplified navigation, large touch targets, and task-first flows
+- [x] Build an adaptive iPad planning workspace with persistent navigation, task list, and task-detail inspector
+- [x] Repair first-use offline messaging, complete existing-task scheduling edits, selection safety, and Task/Subtask terminology
+- [x] Add responsive, accessibility, browser, and native interaction regression coverage; validate production builds
+- [x] Submit the approved native redesign to internal TestFlight after secure signing validation
