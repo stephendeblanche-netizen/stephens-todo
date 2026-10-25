@@ -576,6 +576,6 @@
 - [x] Add browser and native Work View regression coverage; validate and deliver the correction
 
 ## Mobile Header Simplification and Task Name Editing
-- [ ] Remove the completed-work and reminders controls from the mobile top area while retaining access through secondary surfaces
-- [ ] Allow the task name to be edited in an opened task detail and safely synchronised offline or online
-- [ ] Add native interaction regression coverage; validate and deliver the TestFlight update
+- [x] Remove the completed-work and reminders controls from the mobile top area while retaining access through secondary surfaces
+- [x] Allow the task name to be edited in an opened task detail and safely synchronised offline or online
+- [x] Add native interaction regression coverage; validate and deliver the TestFlight update
