@@ -579,3 +579,8 @@
 - [x] Remove the completed-work and reminders controls from the mobile top area while retaining access through secondary surfaces
 - [x] Allow the task name to be edited in an opened task detail and safely synchronised offline or online
 - [x] Add native interaction regression coverage; validate and deliver the TestFlight update
+
+## iPad Task Inspector Refinement
+- [ ] Keep selected task rows collapsed while the iPad task inspector is visible, so the task list remains scannable without duplicated details
+- [ ] Add a clear iPad preview-pane show/hide control that restores inline task details when the pane is hidden
+- [ ] Add native interaction coverage; validate and deliver the TestFlight correction

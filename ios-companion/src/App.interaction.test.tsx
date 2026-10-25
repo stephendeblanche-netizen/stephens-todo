@@ -432,7 +432,7 @@ describe("redesigned iOS companion interactions", () => {
     expect(button(root, "Focus task Third focus")).toBeTruthy();
   });
 
-  it("renders the regular-width iPad planning workspace and opens its inspector", async () => {
+  it("toggles the regular-width iPad task preview without duplicating task editors", async () => {
     dimensions.width = 1024;
     dimensions.height = 768;
     const renderer = await mountApp();
@@ -444,13 +444,47 @@ describe("redesigned iOS companion interactions", () => {
     expect(containsText(root, "TASK INSPECTOR")).toBe(true);
     expect(containsText(root, "Select a task")).toBe(true);
     expect(button(root, "Filter by Planning")).toBeTruthy();
+    const previewOn = button(root, "Task preview is on. Hide task preview pane");
+    expect(previewOn.props.accessibilityRole).toBe("switch");
+    expect(previewOn.props.accessibilityState).toEqual({ checked: true });
+    expect(resolvedStyle(previewOn.props.style).minHeight).toBe(44);
 
     await tap(button(root, "Open Prepare brief"));
 
     expect(containsText(root, "Schedule")).toBe(true);
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
     expect(textInput(root, "Task name for Prepare brief").props.value).toBe("Prepare brief");
     expect(button(root, "Choose due date for Prepare brief")).toBeTruthy();
     expect(button(root, "Reorder tasks in current category")).toBeTruthy();
+
+    await tap(previewOn);
+
+    const previewOff = button(root, "Task preview is off. Show task preview pane");
+    expect(previewOff.props.accessibilityRole).toBe("switch");
+    expect(previewOff.props.accessibilityState).toEqual({ checked: false });
+    expect(containsText(root, "TASK INSPECTOR")).toBe(false);
+    expect(containsText(root, "Organise work with focused inline task details")).toBe(true);
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(0);
+    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: false, selected: false });
+
+    await tap(button(root, "Open Prepare brief"));
+
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
+    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: true, selected: false });
+
+    await tap(previewOff);
+
+    const previewRestored = button(root, "Task preview is on. Hide task preview pane");
+    expect(previewRestored.props.accessibilityState).toEqual({ checked: true });
+    expect(containsText(root, "TASK INSPECTOR")).toBe(true);
+    expect(containsText(root, "Organise work with a clear task inspector")).toBe(true);
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(0);
+    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: false, selected: false });
+
+    await tap(button(root, "Change priority for Prepare brief"));
+
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
+    expect(textInput(root, "Task name for Prepare brief").props.value).toBe("Prepare brief");
   });
 
   it("clears task selection when a filter changes, keeping bulk actions from applying to a changed list", async () => {
