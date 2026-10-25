@@ -117,6 +117,11 @@ const textInput = (root: ReactTestInstance, label: string) => {
 };
 const containsText = (root: ReactTestInstance, value: string) => root.findAll((node) => String(node.type) === "Text" && node.children.join("") === value).length > 0;
 const resolvedStyle = (style: unknown): Record<string, unknown> => (Array.isArray(style) ? style : [style]).filter(Boolean).reduce((combined, layer) => ({ ...combined, ...(layer as Record<string, unknown>) }), {});
+const heading = (root: ReactTestInstance) => {
+  const instance = root.findAll((node) => String(node.type) === "Text" && resolvedStyle(node.props.style).fontSize === 34)[0];
+  expect(instance, "Expected the dynamic workspace heading").toBeTruthy();
+  return instance!.children.join("");
+};
 const tap = async (instance: ReactTestInstance) => act(async () => { instance.props.onPress?.(); await Promise.resolve(); });
 const settle = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await Promise.resolve(); });
 
@@ -211,7 +216,7 @@ describe("redesigned iOS companion interactions", () => {
     expect(api.patchTask).toHaveBeenNthCalledWith(2, 9, { recurrence: "weekly" });
   });
 
-  it("uses the iPhone Today focus and Top 3 flow instead of always-visible planning controls", async () => {
+  it("uses the iPhone My Day focus and Top 3 flow instead of always-visible planning controls", async () => {
     api.getDashboard.mockResolvedValue({
       ...dashboard,
       tasks: [
@@ -225,7 +230,7 @@ describe("redesigned iOS companion interactions", () => {
     mounted.push(renderer);
     const root = renderer.root;
 
-    expect(containsText(root, "Today")).toBe(true);
+    expect(heading(root)).toBe("My Day");
     expect(containsText(root, "Top 3")).toBe(true);
     expect(button(root, "Focus task Due high")).toBeTruthy();
     expect(button(root, "Focus task Later high")).toBeTruthy();
@@ -237,6 +242,87 @@ describe("redesigned iOS companion interactions", () => {
     expect(containsText(root, "More")).toBe(true);
     expect(button(root, "Add task")).toBeTruthy();
     expect(button(root, "Compose corporate email")).toBeTruthy();
+  });
+
+  it("switches each iPhone Work View with a dynamic heading and only its intended task content", async () => {
+    const today = new Date();
+    const dueAt = (offsetDays: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + offsetDays, 12).getTime();
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Urgent focus", categoryId: 1, priority: "medium", dueAt: null, sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Due today", categoryId: 2, priority: "medium", dueAt: dueAt(0), sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 11, text: "Upcoming task", categoryId: 2, priority: "low", dueAt: dueAt(3), sortOrder: 2 },
+        { ...dashboard.tasks[0], id: 12, text: "High backlog", categoryId: 2, priority: "high", dueAt: null, sortOrder: 3 },
+        { ...dashboard.tasks[0], id: 13, text: "Later calendar task", categoryId: 2, priority: "low", dueAt: dueAt(10), sortOrder: 4 },
+        { ...dashboard.tasks[0], id: 14, text: "Completed scheduled task", categoryId: 2, priority: "high", dueAt: dueAt(1), done: true, sortOrder: 5 },
+      ],
+    });
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    expect(heading(root)).toBe("My Day");
+    expect(button(root, "Open Urgent focus")).toBeTruthy();
+    expect(button(root, "Open Due today")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Open Upcoming task")).toBeUndefined();
+    expect(button(root, "Choose Work View").props.accessibilityState).toEqual({ expanded: false });
+
+    await tap(button(root, "Choose Work View"));
+    expect(button(root, "Choose Work View").props.accessibilityState).toEqual({ expanded: true });
+    expect(button(root, "Select Work View My Day").props.accessibilityState).toEqual({ selected: true });
+    for (const viewName of ["All tasks", "Upcoming", "High priority", "Calendar"]) expect(button(root, `Select Work View ${viewName}`)).toBeTruthy();
+
+    await tap(button(root, "Select Work View All tasks"));
+    expect(heading(root)).toBe("All tasks");
+    for (const task of ["Urgent focus", "Due today", "Upcoming task", "High backlog", "Later calendar task"]) expect(button(root, `Open ${task}`)).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Open Completed scheduled task")).toBeUndefined();
+
+    await tap(button(root, "Choose Work View"));
+    await tap(button(root, "Select Work View Upcoming"));
+    expect(heading(root)).toBe("Upcoming");
+    expect(button(root, "Open Due today")).toBeTruthy();
+    expect(button(root, "Open Upcoming task")).toBeTruthy();
+    for (const task of ["Urgent focus", "High backlog", "Later calendar task", "Completed scheduled task"]) expect(pressables(root).find((node) => node.props.accessibilityLabel === `Open ${task}`)).toBeUndefined();
+
+    await tap(button(root, "Choose Work View"));
+    await tap(button(root, "Select Work View High priority"));
+    expect(heading(root)).toBe("High priority");
+    expect(button(root, "Open High backlog")).toBeTruthy();
+    for (const task of ["Urgent focus", "Due today", "Upcoming task", "Later calendar task", "Completed scheduled task"]) expect(pressables(root).find((node) => node.props.accessibilityLabel === `Open ${task}`)).toBeUndefined();
+
+    await tap(button(root, "Choose Work View"));
+    await tap(button(root, "Select Work View Calendar"));
+    expect(heading(root)).toBe("Calendar");
+    expect(button(root, "Open Due today")).toBeTruthy();
+    expect(button(root, "Open Upcoming task")).toBeTruthy();
+    expect(button(root, "Open Later calendar task")).toBeTruthy();
+    for (const task of ["Urgent focus", "High backlog", "Completed scheduled task"]) expect(pressables(root).find((node) => node.props.accessibilityLabel === `Open ${task}`)).toBeUndefined();
+
+    await tap(button(root, "Open Later calendar task"));
+    expect(button(root, "Choose due date for Later calendar task")).toBeTruthy();
+  });
+
+  it("keeps the existing priority filter as a lower-level scope in All tasks", async () => {
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "High work", priority: "high", sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Medium work", priority: "medium", sortOrder: 1 },
+      ],
+    });
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    await tap(button(root, "Choose Work View"));
+    await tap(button(root, "Select Work View All tasks"));
+    await tap(button(root, "Open task filters"));
+    await tap(button(root, "Filter priority high"));
+
+    expect(heading(root)).toBe("All tasks");
+    expect(button(root, "Open High work")).toBeTruthy();
+    expect(pressables(root).find((node) => node.props.accessibilityLabel === "Open Medium work")).toBeUndefined();
   });
 
   it("uses fluid 44pt header actions on a narrow iPhone without fixed-width overflow", async () => {

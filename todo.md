@@ -569,3 +569,8 @@
 - [x] Keep Today header actions entirely within narrow iPhone safe width
 - [x] Add an accessible collapse/expand control for the Top 3 Focus section
 - [x] Add layout and interaction regression coverage; validate and deliver the native correction
+
+## Cross-Platform Work Views
+- [ ] Make the browser workspace heading and description reflect the selected Work View
+- [ ] Mirror My Day, All Tasks, Upcoming, High Priority, and Calendar Work Views in the iPhone experience
+- [ ] Add browser and native Work View regression coverage; validate and deliver the correction

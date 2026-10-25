@@ -168,6 +168,22 @@ describe("Dashboard focused priority views", () => {
     expect(taskEntry("Medium due today")).not.toBeNull();
   });
 
+  it("updates the workspace header when navigating between work views", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    const workspaceHeader = screen.getByRole("region", { name: "Workspace view header" });
+
+    for (const [view, title] of [
+      ["All tasks", "All tasks"],
+      ["Upcoming", "Upcoming"],
+      ["High priority", "High priority"],
+      ["Calendar", "Calendar"],
+    ]) {
+      await user.click(screen.getByRole("button", { name: `Open ${view} Work View` }));
+      expect(within(workspaceHeader).getByRole("heading", { level: 1, name: title })).not.toBeNull();
+    }
+  });
+
   it("keeps administrative tools collapsed until the user opens Manage workspace", async () => {
     const user = userEvent.setup();
     renderDashboard("all");
@@ -199,7 +215,7 @@ describe("Dashboard focused priority views", () => {
 
   it("restores the High quick view from the URL and excludes non-high tasks", () => {
     renderDashboard("high");
-    expect(screen.getByRole("heading", { name: "High priority" })).not.toBeNull();
+    expect(within(screen.getByRole("region", { name: "Workspace view header" })).getByRole("heading", { level: 1, name: "High priority" })).not.toBeNull();
     expect(taskEntry("Urgent high today")).not.toBeNull();
     expect(taskEntry("High upcoming")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Open details for Medium due today" })).toBeNull();

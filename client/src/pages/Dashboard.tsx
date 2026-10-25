@@ -118,6 +118,29 @@ const PRIORITY_META = {
 
 type Task = DatabaseTask & { responsibleColleagueIds?: number[] };
 
+const WORKSPACE_VIEW_META = {
+  today: {
+    title: "My Day",
+    description: "Tasks due today, overdue, or marked urgent.",
+  },
+  all: {
+    title: "All tasks",
+    description: "Every task across all categories.",
+  },
+  upcoming: {
+    title: "Upcoming",
+    description: "Tasks scheduled after today.",
+  },
+  high: {
+    title: "High priority",
+    description: "All unfinished high-priority tasks.",
+  },
+  calendar: {
+    title: "Calendar",
+    description: "Tasks organised by due date.",
+  },
+} as const;
+
 function attachmentUrl(attachment: TaskAttachment) {
   return `/manus-storage/${attachment.storageKey}`;
 }
@@ -2228,6 +2251,7 @@ export default function Dashboard() {
     () => [...categoriesData].sort((a, b) => a.sortOrder - b.sortOrder),
     [categoriesData]
   );
+  const workspaceView = WORKSPACE_VIEW_META[activeView];
 
   const selectWorkspaceView = (view: "all" | "today" | "upcoming" | "high" | "calendar") => {
     setManageOpen(false);
@@ -2250,7 +2274,7 @@ export default function Dashboard() {
         ["high", "High priority", Flag, highPriorityTasks.length],
         ["calendar", "Calendar", CalendarDays, undefined],
       ] as const).map(([view, label, Icon, count]) => (
-        <button key={view} className={`dashboard-rail-button ${activeView === view && !manageOpen ? "is-active" : ""}`} type="button" onClick={() => selectWorkspaceView(view)} aria-current={activeView === view && !manageOpen ? "page" : undefined}>
+        <button key={view} className={`dashboard-rail-button ${activeView === view && !manageOpen ? "is-active" : ""}`} type="button" onClick={() => selectWorkspaceView(view)} aria-label={`Open ${label} Work View`} aria-current={activeView === view && !manageOpen ? "page" : undefined}>
           <Icon size={17} aria-hidden="true" /> <span className="dashboard-rail-label">{label}</span>{count !== undefined && <span className="dashboard-rail-count rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--drop-wash)" }}>{count}</span>}
         </button>
       ))}
@@ -2310,12 +2334,12 @@ export default function Dashboard() {
 
           {/* Top bar */}
           <div className="flex justify-between items-start gap-4 flex-wrap mb-5">
-            <div>
+            <div role="region" aria-label="Workspace view header">
               <h1 className="text-[22px] font-bold m-0 mb-1" style={{ color: "var(--text-primary)" }}>
-                My Day
+                {workspaceView.title}
               </h1>
               <p className="text-[13px] m-0" style={{ color: "var(--text-secondary)" }}>
-                {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                {workspaceView.description}
               </p>
             </div>
             <div className="flex gap-2 flex-wrap items-center">
