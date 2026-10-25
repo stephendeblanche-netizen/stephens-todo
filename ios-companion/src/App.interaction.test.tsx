@@ -187,6 +187,56 @@ describe("redesigned iOS companion interactions", () => {
     expect(containsText(root, "Synced")).toBe(true);
   });
 
+  it("keeps reminder and completed-task controls out of the top-level UI while exposing them in More and Filters", async () => {
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    for (const label of ["Toggle task reminders", "Show completed tasks", "Hide completed tasks"]) {
+      expect(pressables(root).find((node) => node.props.accessibilityLabel === label)).toBeUndefined();
+    }
+
+    await tap(button(root, "More workspace actions"));
+    const reminders = button(root, "Task reminders are off. Turn reminders on");
+    expect(reminders.props.accessibilityRole).toBe("switch");
+    expect(reminders.props.accessibilityState).toEqual({ checked: false });
+
+    await tap(button(root, "Close add menu"));
+    await tap(button(root, "Open task filters"));
+    expect(button(root, "Show completed tasks")).toBeTruthy();
+  });
+
+  it("queues a trimmed sparse task-name patch offline and replays it without losing the local draft to a stale snapshot", async () => {
+    const renderer = await mountApp();
+    mounted.push(renderer);
+    const root = renderer.root;
+
+    await act(async () => { netInfo.emit(offline); });
+    await tap(button(root, "Open Prepare brief"));
+    await act(async () => {
+      const input = textInput(root, "Task name for Prepare brief");
+      input.props.onFocus();
+      input.props.onChangeText("  Renamed brief  ");
+    });
+    await act(async () => { textInput(root, "Task name for Prepare brief").props.onSubmitEditing(); });
+    await settle();
+    await act(async () => { textInput(root, "Task name for Renamed brief").props.onBlur(); });
+    await settle();
+
+    expect(textInput(root, "Task name for Renamed brief").props.value).toBe("Renamed brief");
+    const queued = JSON.parse(await (AsyncStorage as any).getItem("stephens-todo.mutations.v1"));
+    expect(queued.map((entry: any) => ({ type: entry.type, taskId: entry.taskId, patch: entry.patch }))).toEqual([
+      { type: "patch", taskId: 9, patch: { text: "Renamed brief" } },
+    ]);
+    expect(api.patchTask).not.toHaveBeenCalled();
+
+    await act(async () => { netInfo.emit(online); });
+    await settle();
+
+    expect(api.patchTask).toHaveBeenCalledWith(9, { text: "Renamed brief" });
+    expect(textInput(root, "Task name for Renamed brief").props.value).toBe("Renamed brief");
+  });
+
   it("edits an existing task schedule and replays sparse date and recurrence patches on reconnect", async () => {
     const renderer = await mountApp();
     mounted.push(renderer);
@@ -398,6 +448,7 @@ describe("redesigned iOS companion interactions", () => {
     await tap(button(root, "Open Prepare brief"));
 
     expect(containsText(root, "Schedule")).toBe(true);
+    expect(textInput(root, "Task name for Prepare brief").props.value).toBe("Prepare brief");
     expect(button(root, "Choose due date for Prepare brief")).toBeTruthy();
     expect(button(root, "Reorder tasks in current category")).toBeTruthy();
   });

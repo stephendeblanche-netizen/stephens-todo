@@ -9,7 +9,7 @@ export type Task = {
 };
 export type DashboardPayload = { categories: Category[]; tasks: Task[]; directReports: DirectReport[]; syncedAt: number };
 /** Fields the task update endpoint accepts and the offline queue may safely replay. */
-export type TaskPatch = Partial<Pick<Task, "done" | "note" | "priority" | "dueAt" | "recurrence" | "accountableDirectReportId" | "responsibleColleagueIds">>;
+export type TaskPatch = Partial<Pick<Task, "text" | "done" | "note" | "priority" | "dueAt" | "recurrence" | "accountableDirectReportId" | "responsibleColleagueIds">>;
 export type TaskCreateInput = { categoryId: number; parentId?: number; text: string; sortOrder: number; dueAt?: number | null; priority: Priority; recurrence?: Recurrence; accountableDirectReportId?: number | null; responsibleColleagueIds?: number[]; mobileClientMutationId?: string };
 export type QueuedTaskMutation =
   | { id: string; type: "patch"; taskId: number; patch: TaskPatch; createdAt: number }
