@@ -432,59 +432,97 @@ describe("redesigned iOS companion interactions", () => {
     expect(button(root, "Focus task Third focus")).toBeTruthy();
   });
 
-  it("toggles the regular-width iPad task preview without duplicating task editors", async () => {
+  it("uses direct iPad Work Views with scoped agenda data and one preview editor", async () => {
     dimensions.width = 1024;
     dimensions.height = 768;
+    const today = new Date();
+    const dueAt = (offsetDays: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + offsetDays, 12).getTime();
+    api.getDashboard.mockResolvedValue({
+      ...dashboard,
+      tasks: [
+        { ...dashboard.tasks[0], id: 9, text: "Urgent focus", categoryId: 1, priority: "medium", dueAt: null, sortOrder: 0 },
+        { ...dashboard.tasks[0], id: 10, text: "Due today", categoryId: 2, priority: "medium", dueAt: dueAt(0), responsibleColleagueIds: [4], sortOrder: 1 },
+        { ...dashboard.tasks[0], id: 11, text: "Upcoming task", categoryId: 2, priority: "low", dueAt: dueAt(3), responsibleColleagueIds: [4], sortOrder: 2 },
+        { ...dashboard.tasks[0], id: 12, text: "High backlog", categoryId: 2, priority: "high", dueAt: null, responsibleColleagueIds: [4], sortOrder: 3 },
+        { ...dashboard.tasks[0], id: 13, text: "Later calendar task", categoryId: 2, priority: "low", dueAt: dueAt(10), responsibleColleagueIds: [4], sortOrder: 4 },
+        { ...dashboard.tasks[0], id: 14, text: "Completed scheduled task", categoryId: 2, priority: "high", dueAt: dueAt(1), done: true, responsibleColleagueIds: [4], sortOrder: 5 },
+      ],
+    });
     const renderer = await mountApp();
     mounted.push(renderer);
     const root = renderer.root;
+    const openTask = (name: string) => pressables(root).find((node) => String(node.props.accessibilityLabel).startsWith(`Open ${name}`));
 
     expect(containsText(root, "Plan")).toBe(true);
+    expect(containsText(root, "WORK VIEWS")).toBe(true);
     expect(containsText(root, "CATEGORY SCOPE")).toBe(true);
-    expect(containsText(root, "TASK INSPECTOR")).toBe(true);
-    expect(containsText(root, "Select a task")).toBe(true);
-    expect(button(root, "Filter by Planning")).toBeTruthy();
+    for (const viewName of ["My Day", "All tasks", "Upcoming", "High priority", "Calendar"]) expect(button(root, `Select Work View ${viewName}`)).toBeTruthy();
+    expect(button(root, "Select Work View My Day").props.accessibilityState).toEqual({ selected: true });
+    expect(button(root, "Open Urgent focus")).toBeTruthy();
+    expect(button(root, "Open Due today")).toBeTruthy();
+    for (const task of ["Upcoming task", "High backlog", "Later calendar task", "Completed scheduled task"]) expect(openTask(task)).toBeUndefined();
+
     const previewOn = button(root, "Task preview is on. Hide task preview pane");
     expect(previewOn.props.accessibilityRole).toBe("switch");
     expect(previewOn.props.accessibilityState).toEqual({ checked: true });
     expect(resolvedStyle(previewOn.props.style).minHeight).toBe(44);
+    await tap(button(root, "Open Due today"));
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Due today")).toHaveLength(1);
+    expect(textInput(root, "Task name for Due today").props.value).toBe("Due today");
 
-    await tap(button(root, "Open Prepare brief"));
+    await tap(button(root, "Select Work View All tasks"));
+    expect(containsText(root, "All tasks")).toBe(true);
+    for (const task of ["Urgent focus", "Due today", "Upcoming task", "High backlog", "Later calendar task"]) expect(openTask(task)).toBeTruthy();
+    expect(openTask("Completed scheduled task")).toBeUndefined();
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Due today")).toHaveLength(0);
 
-    expect(containsText(root, "Schedule")).toBe(true);
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
-    expect(textInput(root, "Task name for Prepare brief").props.value).toBe("Prepare brief");
-    expect(button(root, "Choose due date for Prepare brief")).toBeTruthy();
-    expect(button(root, "Reorder tasks in current category")).toBeTruthy();
+    await tap(button(root, "Select Work View Upcoming"));
+    expect(button(root, "Open Due today")).toBeTruthy();
+    expect(button(root, "Open Upcoming task")).toBeTruthy();
+    for (const task of ["Urgent focus", "High backlog", "Later calendar task", "Completed scheduled task"]) expect(openTask(task)).toBeUndefined();
 
-    await tap(previewOn);
+    await tap(button(root, "Select Work View High priority"));
+    expect(button(root, "Open High backlog")).toBeTruthy();
+    for (const task of ["Urgent focus", "Due today", "Upcoming task", "Later calendar task", "Completed scheduled task"]) expect(openTask(task)).toBeUndefined();
 
-    const previewOff = button(root, "Task preview is off. Show task preview pane");
-    expect(previewOff.props.accessibilityRole).toBe("switch");
-    expect(previewOff.props.accessibilityState).toEqual({ checked: false });
+    await tap(button(root, "Select Work View Calendar"));
+    for (const task of ["Due today", "Upcoming task", "Later calendar task"]) expect(button(root, `Open ${task}`)).toBeTruthy();
+    for (const task of ["Urgent focus", "High backlog", "Completed scheduled task"]) expect(openTask(task)).toBeUndefined();
+    expect(root.findAll((node) => String(node.type) === "Text" && node.props.accessibilityRole === "header")).toHaveLength(3);
+
+    await tap(button(root, "Open Later calendar task"));
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Later calendar task")).toHaveLength(1);
+    await tap(button(root, "Task preview is on. Hide task preview pane"));
     expect(containsText(root, "TASK INSPECTOR")).toBe(false);
-    expect(containsText(root, "Organise work with focused inline task details")).toBe(true);
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(0);
-    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: false, selected: false });
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Later calendar task")).toHaveLength(0);
+    await tap(button(root, "Open Later calendar task"));
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Later calendar task")).toHaveLength(1);
+    expect(button(root, "Open Later calendar task").props.accessibilityState).toEqual({ expanded: true, selected: false });
 
-    await tap(button(root, "Open Prepare brief"));
-
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
-    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: true, selected: false });
-
-    await tap(previewOff);
-
-    const previewRestored = button(root, "Task preview is on. Hide task preview pane");
-    expect(previewRestored.props.accessibilityState).toEqual({ checked: true });
+    await tap(button(root, "Task preview is off. Show task preview pane"));
     expect(containsText(root, "TASK INSPECTOR")).toBe(true);
-    expect(containsText(root, "Organise work with a clear task inspector")).toBe(true);
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(0);
-    expect(button(root, "Open Prepare brief").props.accessibilityState).toEqual({ expanded: false, selected: false });
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Later calendar task")).toHaveLength(0);
+    await tap(button(root, "Open Later calendar task"));
+    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Later calendar task")).toHaveLength(1);
 
-    await tap(button(root, "Change priority for Prepare brief"));
+    await tap(button(root, "Select Work View All tasks"));
+    await tap(button(root, "Filter by Planning"));
+    expect(button(root, "Reorder tasks in current category")).toBeTruthy();
+    for (const task of ["Due today", "Upcoming task", "High backlog", "Later calendar task"]) expect(openTask(task)).toBeTruthy();
+    expect(openTask("Urgent focus")).toBeUndefined();
 
-    expect(root.findAll((node) => String(node.type) === "TextInput" && node.props.accessibilityLabel === "Task name for Prepare brief")).toHaveLength(1);
-    expect(textInput(root, "Task name for Prepare brief").props.value).toBe("Prepare brief");
+    await tap(button(root, "Open task filters"));
+    await tap(button(root, "Filter priority high"));
+    expect(button(root, "Open High backlog")).toBeTruthy();
+    for (const task of ["Due today", "Upcoming task", "Later calendar task", "Completed scheduled task"]) expect(openTask(task)).toBeUndefined();
+
+    await tap(button(root, "Open task filters"));
+    await tap(button(root, "Filter priority all"));
+    await tap(button(root, "Open task filters"));
+    await tap(button(root, "Choose Responsible Colleague task filter"));
+    await tap(button(root, "Filter task list by Responsible Colleague Ava"));
+    for (const task of ["Due today", "Upcoming task", "High backlog", "Later calendar task"]) expect(openTask(task)).toBeTruthy();
+    expect(openTask("Urgent focus")).toBeUndefined();
   });
 
   it("clears task selection when a filter changes, keeping bulk actions from applying to a changed list", async () => {

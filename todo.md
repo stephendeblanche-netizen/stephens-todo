@@ -584,3 +584,9 @@
 - [x] Keep selected task rows collapsed while the iPad task inspector is visible, so the task list remains scannable without duplicated details
 - [x] Add a clear iPad preview-pane show/hide control that restores inline task details when the pane is hidden
 - [x] Add native interaction coverage; validate and deliver the TestFlight correction
+
+## iPad Work Views
+- [ ] Add My Day, All Tasks, Upcoming, High Priority, and Calendar Work Views to the iPad workspace navigation
+- [ ] Apply each iPad Work View to the central list or agenda while retaining category and task filters
+- [ ] Keep task preview and inline-detail modes functional across every Work View
+- [ ] Add native interaction coverage; validate and deliver the iPad Work Views update to TestFlight
