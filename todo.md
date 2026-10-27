@@ -586,7 +586,7 @@
 - [x] Add native interaction coverage; validate and deliver the TestFlight correction
 
 ## iPad Work Views
-- [ ] Add My Day, All Tasks, Upcoming, High Priority, and Calendar Work Views to the iPad workspace navigation
-- [ ] Apply each iPad Work View to the central list or agenda while retaining category and task filters
-- [ ] Keep task preview and inline-detail modes functional across every Work View
-- [ ] Add native interaction coverage; validate and deliver the iPad Work Views update to TestFlight
+- [x] Add My Day, All Tasks, Upcoming, High Priority, and Calendar Work Views to the iPad workspace navigation
+- [x] Apply each iPad Work View to the central list or agenda while retaining category and task filters
+- [x] Keep task preview and inline-detail modes functional across every Work View
+- [x] Add native interaction coverage; validate and deliver the iPad Work Views update to TestFlight
